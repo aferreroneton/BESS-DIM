@@ -4,6 +4,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import pandas as pd
 import numpy as np
 import pv_first_daily
+import best_price_daily
 import aux_functions
 
 SAVINGS_MODEL_INTERCEPT = 0.943906
@@ -67,7 +68,7 @@ SAVINGS_MODEL2_VALID_TARIFFS = set(SAVINGS_MODEL2_B_TARIFF.keys())
 DEFAULT_HORIZON_YEARS = 20
 
 # Estrategias de carga soportadas actualmente por el motor de cálculo.
-SUPPORTED_SURPLUS_STRATEGIES = {"PV surplus first"}
+SUPPORTED_SURPLUS_STRATEGIES = {"PV surplus first", "Best price PV vs Grid"}
 
 def project_savings(savings_y1, tariff, container_type, pct_charge_pv=None, years=None):
 
@@ -194,7 +195,15 @@ def _solve_combo(
 
     print(f"Solving: [{scenario["Scenario"]}]: {container_type} x {n_containers} = {bess_capacity:.3f} MWh")
 
-    model, results = pv_first_daily.opt_pv_first_daily(data, inputs)
+    if scenario["Surplus Strategy"] == "PV surplus first":
+        model, results = pv_first_daily.opt_pv_first_daily(data, inputs)
+    elif scenario["Surplus Strategy"] == "Best price PV vs Grid":
+        model, results = best_price_daily.opt_best_price_daily(data, inputs)
+    else:
+        raise NotImplementedError(
+            f"Scenario '{scenario["Scenario"]}': Surplus Strategy='{scenario["Surplus Strategy"]}' can't be run"
+            f"please choose one of the following strategies: {sorted(SUPPORTED_SURPLUS_STRATEGIES)}."
+        )
     calc_data = aux_functions.calculate_table(results, inputs["PPA Price"], inputs)
     savings_y1 = calc_data["€ Savings from BESS"]
 
