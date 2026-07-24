@@ -162,27 +162,24 @@ def load_scenarios(file, sheet_name="Scenarios"):
 
     return scenarios
 
-def _solve_combo(
-        data_base,
-        scenario,
-        horizon_years,
-        savings_threshold
-):
-    
-    container_type = scenario["Container Type"]
-    nominal_capacity = scenario["Nominal Capacity"]
-    n_containers = scenario["N Containers"]
-    bess_capacity = nominal_capacity*n_containers
-    ppa_imp = scenario["PPA Improvement"]
+def solve_scenario(data_base, scenario):
+    """
+    Resuelve el MILP de un único escenario (selección de curva de degradación
+    por proveedor + branching de estrategia) y devuelve (model, results, inputs).
+
+    No calcula KPIs ni proyecciones de ahorro: eso es responsabilidad de quien
+    consume el resultado (_solve_combo para el sweep, un dashboard para
+    visualización).
+    """
 
     inputs = {
-        "Pot BESS"          :   nominal_capacity,
-        "N containers"      :   n_containers,
+        "Pot BESS"          :   scenario["Nominal Capacity"],
+        "N containers"      :   scenario["N Containers"],
         "C-factor"          :   scenario["C-Factor"],
         "TARIFF"            :   scenario["Tariff"],
         "PPA Mode"          :   scenario["PPA Mode"],
         "PPA Price"         :   scenario["PPA Price"],
-        "Discharge Cost"    :   scenario["Discharge Cost"], 
+        "Discharge Cost"    :   scenario["Discharge Cost"],
         "Cycles/Day"        :   scenario["Cycles/Day"],
         "tolls"             :   scenario["tolls"],
     }
@@ -193,8 +190,6 @@ def _solve_combo(
     else:
         data["BESS Degradation factor"] = data["BESS Degradation factor - Risen"]
 
-    print(f"Solving: [{scenario["Scenario"]}]: {container_type} x {n_containers} = {bess_capacity:.3f} MWh")
-
     if scenario["Surplus Strategy"] == "PV surplus first":
         model, results = pv_first_daily.opt_pv_first_daily(data, inputs)
     elif scenario["Surplus Strategy"] == "Best price PV vs Grid":
@@ -204,6 +199,63 @@ def _solve_combo(
             f"Scenario '{scenario["Scenario"]}': Surplus Strategy='{scenario["Surplus Strategy"]}' can't be run"
             f"please choose one of the following strategies: {sorted(SUPPORTED_SURPLUS_STRATEGIES)}."
         )
+
+    return model, results, inputs
+
+
+def _solve_scenario_raw(data_base, scenario):
+    model, results, inputs = solve_scenario(data_base, scenario)
+    return scenario["Scenario"], results, inputs, scenario
+
+
+def solve_all_scenarios(file, only=None, n_workers=None, parallel=True):
+    """
+    Resuelve (en paralelo por defecto) todos los escenarios definidos en 'file',
+    o solo los indicados en 'only' (lista de nombres de Scenario), y devuelve un
+    dict {scenario_name: {"results": DataFrame horario, "inputs": dict, "scenario": dict}}.
+
+    Pensado para alimentar un dashboard de visualización que no necesita
+    recalcular KPIs/proyecciones de ahorro, solo los resultados horarios crudos.
+    """
+
+    scenarios = load_scenarios(file)
+    if only is not None:
+        scenarios = [s for s in scenarios if s["Scenario"] in set(only)]
+
+    data_base = pd.read_excel(file, sheet_name="Hourly Data", header=2)
+
+    if not parallel:
+        raw = [_solve_scenario_raw(data_base, scen) for scen in scenarios]
+    else:
+        workers = n_workers or max(os.cpu_count() - 1, 1)
+        raw = []
+        with ProcessPoolExecutor(max_workers=workers) as executor:
+            futures = {executor.submit(_solve_scenario_raw, data_base, scen): scen["Scenario"] for scen in scenarios}
+            for future in as_completed(futures):
+                raw.append(future.result())
+
+    return {
+        name: {"results": results, "inputs": inputs, "scenario": scenario}
+        for name, results, inputs, scenario in raw
+    }
+
+
+def _solve_combo(
+        data_base,
+        scenario,
+        horizon_years,
+        savings_threshold
+):
+
+    container_type = scenario["Container Type"]
+    nominal_capacity = scenario["Nominal Capacity"]
+    n_containers = scenario["N Containers"]
+    bess_capacity = nominal_capacity*n_containers
+    ppa_imp = scenario["PPA Improvement"]
+
+    print(f"Solving: [{scenario["Scenario"]}]: {container_type} x {n_containers} = {bess_capacity:.3f} MWh")
+
+    model, results, inputs = solve_scenario(data_base, scenario)
     calc_data = aux_functions.calculate_table(results, inputs["PPA Price"], inputs)
     savings_y1 = calc_data["€ Savings from BESS"]
 
