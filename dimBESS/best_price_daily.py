@@ -169,7 +169,7 @@ def opt_best_price_daily(data, inputs, tee=False):
     """
 
     HOURS_PER_DAY = 24
-    OFFSET = 6
+    OFFSET = 0
     E_MAX = inputs["Pot BESS"]*inputs["N containers"]
 
     demand = (data["Power demand kWh"]/1000).tolist()
@@ -246,7 +246,7 @@ def opt_best_price_daily(data, inputs, tee=False):
         pv_day = np.array(pv_surplus[sl])
         idx = np.where(pv_day>0)[0]
         last_pv = idx[-1] if len(idx) > 0 else -1
-        t_end = min(max(10, last_pv), nh - 1)
+        t_end = min(max(16, last_pv), nh - 1)
 
         window = np.zeros(nh)
         window[:t_end+1] = 1
