@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import aux_functions
+import theme
 from scenario_selector import require_scenario
 
 st.set_page_config(
@@ -113,14 +114,14 @@ with chart_col:
     mwh_cols = [c for c in data_plot.columns if "MWh" in c]
     price_cols = [c for c in data_plot.columns if "Price" in c]
     colors = {
-        "MWh PV Direct SC"              :   "#8EFBFB",
-        "MWh Charge from PV"            :   "#00B2D9",
-        "MWh BESS Discharge"            :   "#3049AD",
+        "MWh PV Direct SC"              :   theme.CYAN_SOFT,
+        "MWh Charge from PV"            :   theme.CYAN,
+        "MWh BESS Discharge"            :   theme.NAVY_DARK,
         "MWh Unmet Demand after BESS"   :   "#E6E6E6",
-        "MWh Unstored Surplus"          :   "#FF994E",
-        "MWh Charge from Grid"          :   "#C83D95",
-        "Grid Charging Price"           :   "#DE8BBF",
-        "PV Charging Price"             :   "#66D1E8"
+        "MWh Unstored Surplus"          :   theme.ORANGE,
+        "MWh Charge from Grid"          :   theme.CORAL_DARK,
+        "Grid Charging Price"           :   theme.CORAL_LIGHT,
+        "PV Charging Price"             :   theme.CYAN_SOFT
     }
 
     fig_1 = go.Figure()

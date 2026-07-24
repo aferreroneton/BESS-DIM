@@ -7,6 +7,12 @@ if DIMBESS_DIR not in sys.path:
 
 import streamlit as st
 
+import theme
+
+#----------------------------------------BRANDING----------------------------------------
+
+st.logo(theme.LOGO_PATH)
+
 #----------------------------------------PAGE SETUP----------------------------------------
 
 home_page = st.Page(
@@ -14,6 +20,12 @@ home_page = st.Page(
     title="Homepage",
     icon="🏠",
     default=True
+)
+
+page0 = st.Page(
+    page="pages/Scenario_Builder.py",
+    title="Scenario Builder",
+    icon="🛠️"
 )
 
 page1 = st.Page(
@@ -42,7 +54,7 @@ page4 = st.Page(
 
 #----------------------------------------NAVIGATION SETUP----------------------------------------
 
-pg = st.navigation(pages=[home_page, page1, page2, page3, page4])
+pg = st.navigation(pages=[home_page, page0, page1, page2, page3, page4])
 
 #----------------------------------------RUN SETUP----------------------------------------
 

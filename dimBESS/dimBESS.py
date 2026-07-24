@@ -121,6 +121,22 @@ def project_ppa_savings(ppa_imp, mwh_pv_sc_y1, years=None):
 
     return pd.Series(savings, index=years_list, name="SAVINGS_PPA")
 
+def read_cups_info(file, sheet_name="CUPS"):
+    """
+    Lee la configuración de CUPS: Tariff/Client/Plant son valores únicos para
+    todo el workbook (no varían por escenario ni por periodo), a diferencia de
+    'ContPower (MW)' que sí varía por periodo tarifario (P1-P6).
+    """
+
+    df = pd.read_excel(file, sheet_name=sheet_name, header=0)
+
+    return {
+        "Tariff"    :   df["Tariff"].dropna().iloc[0],
+        "Client"    :   df["Client"].dropna().iloc[0],
+        "Plant"     :   df["Plant"].dropna().iloc[0],
+    }
+
+
 def load_scenarios(file, sheet_name="Scenarios"):
 
     df = pd.read_excel(file, sheet_name=sheet_name, header=0)
@@ -128,7 +144,9 @@ def load_scenarios(file, sheet_name="Scenarios"):
 
     if df.empty:
         raise ValueError(f"'{sheet_name}' has no defined scenarios")
-    
+
+    tariff = read_cups_info(file)["Tariff"]  # Tariff vive en CUPS, no por escenario
+
     scenarios = []
     for _, row in df.iterrows():
         container_type = row["Type of Container"]
@@ -140,7 +158,7 @@ def load_scenarios(file, sheet_name="Scenarios"):
                 f"Scenario '{row["Scenario"]}': Surplus Strategy='{strategy}' can't be run"
                 f"please choose one of the following strategies: {sorted(SUPPORTED_SURPLUS_STRATEGIES)}."
             )
-    
+
         ppa_imp = float(row["PV PPA Price for charging €/MWh"]) - float(row["Original PPA price €/MWh"])
         scenarios.append({
             "Scenario"          :   row["Scenario"],
@@ -149,7 +167,7 @@ def load_scenarios(file, sheet_name="Scenarios"):
             "Nominal Capacity"  :   float(row["Nominal Capacity"]),
             "N Containers"      :   float(row["N containers"]),
             "C-Factor"          :   float(row["C-Factor"]),
-            "Tariff"            :   row["Tariff"],
+            "Tariff"            :   tariff,
             "PPA Mode"          :   row["Price mode from PV surplus"],
             "Surplus Strategy"  :   strategy,
             "PPA Price"         :   float(row["PV PPA Price for charging €/MWh"]),

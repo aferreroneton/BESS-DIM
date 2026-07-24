@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+import theme
 from scenario_selector import require_scenario
 
 st.set_page_config(
@@ -101,7 +102,7 @@ fig = go.Figure(
         z=heatmap_df.values,
         x=heatmap_df.columns,
         y=heatmap_df.index,
-        colorscale=[[0.0, "#B6B0FF"], [1.0, "#3049AD"]],
+        colorscale=[[0.0, theme.CORAL_LIGHT], [1.0, theme.CORAL_DARK]],
         colorbar=dict(title=value_sel),
         hovertemplate=(
             f"{row_sel}: %{{y}}<br>"

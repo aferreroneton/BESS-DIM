@@ -30,6 +30,9 @@ except Exception as e:
 
 st.success(f"{len(scenarios)} escenario(s) cargado(s) desde '{source_label}'")
 
+cups_info = dimBESS.read_cups_info(source_file)
+st.caption(f"CUPS: **{cups_info['Client']}** · {cups_info['Plant']} · Tarifa **{cups_info['Tariff']}**")
+
 with st.expander("Escenarios definidos"):
     st.dataframe(pd.DataFrame(scenarios))
 
@@ -43,6 +46,7 @@ if (
     st.session_state["scenario_results"] = {}
     st.session_state["scenario_source"] = source_label
     st.session_state["data_base"] = pd.read_excel(source_file, sheet_name="Hourly Data", header=2)
+    st.session_state["cups_info"] = dimBESS.read_cups_info(source_file)
 
 scenario_names = [s["Scenario"] for s in scenarios]
 solved_names = list(st.session_state["scenario_results"].keys())
