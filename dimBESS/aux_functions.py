@@ -135,6 +135,32 @@ def metric_cell(value, label, decimals=2, bg_color=None, suffix=""):
     </div>
     """
 
+def column_card(rows, bg_color=None, min_height=None):
+    """
+    Una tarjeta de columna: varias metric_cell apiladas dentro de un único
+    contenedor con un solo fondo de color (en vez de colorear cada celda por
+    separado), para que la columna entera se lea como un bloque sólido.
+
+    rows: lista de (value, label[, decimals=2][, suffix=""]); None para un hueco.
+    """
+    cells_html = ""
+    for row in rows:
+        if row is None:
+            cells_html += "<div>&nbsp;</div>"
+            continue
+        value, label = row[0], row[1]
+        decimals = row[2] if len(row) > 2 else 2
+        suffix = row[3] if len(row) > 3 else ""
+        # metric_cell() vuelve con saltos de línea + indentación; si se concatenan
+        # varias dentro de un mismo st.markdown, Markdown interpreta esa indentación
+        # como bloque de código a partir de la segunda celda. Lo aplanamos a una línea.
+        cells_html += " ".join(metric_cell(value, label, decimals, None, suffix).split())
+
+    bg_style = f"background-color:{bg_color}; padding:10px 12px; border-radius:8px;" if bg_color else "padding:10px 12px;"
+    height_style = f" min-height:{min_height}px;" if min_height else ""
+
+    return f'<div style="{bg_style}{height_style}">{cells_html}</div>'
+
 def dividir(num, den):
     if ((den==0) | pd.isna(num) | pd.isna(den)):
         return 0

@@ -174,7 +174,7 @@ def load_scenarios(file, sheet_name="Scenarios"):
             "PPA Improvement"   :   ppa_imp,
             "Discharge Cost"    :   float(row["Discharge Cost"]) if "Discharge Cost" in row and pd.notna(row.get("Discharge Cost")) else 0.0,
             "Cycles/Day"        :   float(row["Cycles/day"]),
-            "tolls"             :   1, #-----------------------------------------------------------------------------------------TO-DO (WIP)
+            "tolls"             :   0, #-----------------------------------------------------------------------------------------TO-DO (WIP)
             "€ Leasing Monthly" :   float(row["€ Leasing Monthly"]),
         })
 

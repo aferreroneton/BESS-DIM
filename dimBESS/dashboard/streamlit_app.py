@@ -7,6 +7,37 @@ if DIMBESS_DIR not in sys.path:
 
 import streamlit as st
 
+import theme
+
+#----------------------------------------BRANDING----------------------------------------
+
+st.logo(theme.LOGO_FULL_WHITE_PATH, size="small")
+
+st.markdown(
+    """
+    <style>
+    [data-testid="stSidebar"] {
+        background-color: #2E2C67;
+    }
+    [data-testid="stSidebar"] * {
+        color: #FFFFFF;
+    }
+    [data-testid="stSidebarNav"] a {
+        color: #FFFFFF !important;
+        border-radius: 8px;
+    }
+    [data-testid="stSidebarNav"] a:hover {
+        background-color: rgba(255, 255, 255, 0.10);
+    }
+    [data-testid="stSidebarNav"] a[aria-current="page"] {
+        background-color: rgba(255, 255, 255, 0.20);
+        font-weight: 700;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 #----------------------------------------PAGE SETUP----------------------------------------
 
 home_page = st.Page(

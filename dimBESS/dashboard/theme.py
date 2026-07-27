@@ -6,6 +6,7 @@ from PIL import Image
 
 LOGO_PATH = str(Path(__file__).resolve().parent / "logo.png")
 LOGO_FULL_PATH = str(Path(__file__).resolve().parent / "logo_completo.png")
+LOGO_FULL_WHITE_PATH = str(Path(__file__).resolve().parent / "logo_completo_blanco.png")
 
 # Usar un objeto PIL.Image en vez de la ruta como string al pasarlo a
 # st.set_page_config(page_icon=...): en Streamlit 1.52 pasar la ruta directamente
