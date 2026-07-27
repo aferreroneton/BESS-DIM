@@ -11,6 +11,7 @@ st.set_page_config(
     page_icon=theme.LOGO_IMAGE,
     layout="wide"
 )
+st.image(theme.LOGO_FULL_PATH, width=280)
 st.title("BESS Model")
 st.subheader("Homepage")
 
