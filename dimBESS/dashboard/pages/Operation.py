@@ -114,14 +114,14 @@ with chart_col:
     mwh_cols = [c for c in data_plot.columns if "MWh" in c]
     price_cols = [c for c in data_plot.columns if "Price" in c]
     colors = {
-        "MWh PV Direct SC"              :   theme.CYAN_SOFT,
+        "MWh PV Direct SC"              :   theme.ORANGE,
         "MWh Charge from PV"            :   theme.CYAN,
-        "MWh BESS Discharge"            :   theme.NAVY_DARK,
+        "MWh BESS Discharge"            :   theme.CORAL_DARK,
         "MWh Unmet Demand after BESS"   :   "#E6E6E6",
-        "MWh Unstored Surplus"          :   theme.ORANGE,
-        "MWh Charge from Grid"          :   theme.NAVY_LIGHT,
-        "Grid Charging Price"           :   theme.NAVY_DARK,
-        "PV Charging Price"             :   theme.CYAN_SOFT
+        "MWh Unstored Surplus"          :   theme.MUTED,
+        "MWh Charge from Grid"          :   theme.CHART_NAVY,
+        "Grid Charging Price"           :   theme.CHART_NAVY_LIGHT,
+        "PV Charging Price"             :   theme.CHART_CYAN_SOFT
     }
 
     fig_1 = go.Figure()

@@ -102,7 +102,7 @@ fig = go.Figure(
         z=heatmap_df.values,
         x=heatmap_df.columns,
         y=heatmap_df.index,
-        colorscale=[[0.0, theme.NAVY_LIGHT], [1.0, theme.NAVY_DARK]],
+        colorscale=[[0.0, theme.HEATMAP_LIGHT], [1.0, theme.HEATMAP_DARK]],
         colorbar=dict(title=value_sel),
         hovertemplate=(
             f"{row_sel}: %{{y}}<br>"

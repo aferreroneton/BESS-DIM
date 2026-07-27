@@ -56,7 +56,7 @@ with table_col:
         title="KPI Captured Spread",
         gauge={
             "axis": {"range": [0, 100]},
-            "bar": {"color": theme.NAVY_LIGHT},
+            "bar": {"color": theme.CORAL_DARK},
             "bgcolor": "white",
         }
     ))
@@ -84,7 +84,7 @@ with table_col:
         title="KPI BESS Utilization (Cycles/Day)",
         gauge={
             "axis": {"range": [0, 100]},
-            "bar": {"color": theme.NAVY_LIGHT},
+            "bar": {"color": theme.CORAL_DARK},
             "bgcolor": "white",
         }
     ))
@@ -109,7 +109,7 @@ with table_col:
         title="KPI Charging Optimization",
         gauge={
             "axis": {"range": [0, 100]},
-            "bar": {"color": theme.NAVY_LIGHT},
+            "bar": {"color": theme.CORAL_DARK},
             "bgcolor": "white",
         }
     ))
@@ -148,7 +148,7 @@ with chart_col:
             x=calc_data_freq.index,
             y=calc_data_freq["€/MWh Max Grid Pot. Spread"],
             name="€/MWh Max Grid Pot. Spread",
-            marker_color=theme.NAVY_LIGHT,
+            marker_color=theme.CHART_NAVY,
             text=[f"{v:.2f}" for v in calc_data_freq["€/MWh Max Grid Pot. Spread"]],
             textposition="outside",
             textfont=dict(color="black", size=10),
@@ -160,7 +160,7 @@ with chart_col:
             x=calc_data_freq.index,
             y=calc_data_freq["€/MWh BESS Captured Spread"],
             name="€/MWh BESS Captured Spread",
-            marker_color=theme.NAVY_DARK,
+            marker_color=theme.CORAL_DARK,
             text=[f"{v:.2f}" for v in calc_data_freq["€/MWh BESS Captured Spread"]],
             textposition="outside",
             textfont=dict(color="black", size=10),
@@ -203,7 +203,7 @@ with chart_col:
             x=calc_data_freq.index,
             y=calc_data_freq["# Days"],
             name="# Days",
-            marker_color=theme.NAVY_LIGHT,
+            marker_color=theme.CHART_NAVY,
             yaxis="y",
             text=calc_data_freq["# Days"],
             textposition="inside",
@@ -216,7 +216,7 @@ with chart_col:
             x=calc_data_freq.index,
             y=calc_data_freq["# BESS Cycles"],
             name="# BESS Cycles",
-            marker_color=theme.NAVY_DARK,
+            marker_color=theme.CORAL_DARK,
             yaxis="y",
             text=[f"{v:.2f}" for v in calc_data_freq["# BESS Cycles"]],
             textposition="outside",
@@ -260,7 +260,7 @@ with chart_col:
             x=calc_data_freq.index,
             y=calc_data_freq["# Charging hours / Day"],
             name="# Charging hours / Day",
-            marker_color=theme.NAVY_LIGHT,
+            marker_color=theme.CORAL_DARK,
             yaxis="y",
             text=[f"{v:.2f}" for v in calc_data_freq["# Charging hours / Day"]],
             textposition="inside",
@@ -273,7 +273,7 @@ with chart_col:
             x=calc_data_freq.index,
             y=calc_data_freq["# C/D Hours by C-Factor"],
             name="# C/D Hours by C-Factor",
-            marker_color=theme.NAVY_DARK,
+            marker_color=theme.CHART_NAVY,
             yaxis="y",
             text=[f"{v:.2f}" for v in calc_data_freq["# C/D Hours by C-Factor"]],
             textposition="outside",
