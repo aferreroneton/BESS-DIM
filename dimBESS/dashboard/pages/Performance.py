@@ -8,7 +8,7 @@ from scenario_selector import require_scenario
 
 st.set_page_config(
     page_title="BESS Dashboard - Performance",
-    page_icon=":bar_chart:",
+    page_icon=theme.LOGO_IMAGE,
     layout="wide"
 )
 st.title("BESS Model")
@@ -183,7 +183,7 @@ with chart_col:
             y=calc_data_freq["€/MWh AVG Max Price to Replace"],
             name="€/MWh AVG Max Price to Replace",
             mode="lines+markers",
-            line=dict(color=theme.CORAL_LIGHT, width=1)
+            line=dict(color=theme.CYAN, width=1)
         )
     )
 

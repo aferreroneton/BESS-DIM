@@ -7,12 +7,6 @@ if DIMBESS_DIR not in sys.path:
 
 import streamlit as st
 
-import theme
-
-#----------------------------------------BRANDING----------------------------------------
-
-st.logo(theme.LOGO_PATH)
-
 #----------------------------------------PAGE SETUP----------------------------------------
 
 home_page = st.Page(

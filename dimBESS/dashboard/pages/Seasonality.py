@@ -8,7 +8,7 @@ from scenario_selector import require_scenario
 
 st.set_page_config(
     page_title="BESS Dashboard - Seasonality",
-    page_icon=":calendar:",
+    page_icon=theme.LOGO_IMAGE,
     layout="wide"
 )
 st.title("BESS Model")
@@ -102,7 +102,7 @@ fig = go.Figure(
         z=heatmap_df.values,
         x=heatmap_df.columns,
         y=heatmap_df.index,
-        colorscale=[[0.0, theme.CORAL_LIGHT], [1.0, theme.CORAL_DARK]],
+        colorscale=[[0.0, theme.NAVY_LIGHT], [1.0, theme.NAVY_DARK]],
         colorbar=dict(title=value_sel),
         hovertemplate=(
             f"{row_sel}: %{{y}}<br>"

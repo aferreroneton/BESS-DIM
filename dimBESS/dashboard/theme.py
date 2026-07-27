@@ -2,7 +2,14 @@
 
 from pathlib import Path
 
+from PIL import Image
+
 LOGO_PATH = str(Path(__file__).resolve().parent / "logo.png")
+
+# Usar un objeto PIL.Image en vez de la ruta como string al pasarlo a
+# st.set_page_config(page_icon=...): en Streamlit 1.52 pasar la ruta directamente
+# rompe la barra lateral de navegación multipágina (bug interno de Streamlit).
+LOGO_IMAGE = Image.open(LOGO_PATH)
 
 CORAL_DARK = "#C24A4C"
 CORAL_LIGHT = "#D06365"

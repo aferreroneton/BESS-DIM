@@ -2,10 +2,11 @@ import streamlit as st
 
 import dimBESS
 import scenario_builder as sb
+import theme
 
 st.set_page_config(
     page_title="BESS Dashboard - Scenario Builder",
-    page_icon=":hammer_and_wrench:",
+    page_icon=theme.LOGO_IMAGE,
     layout="wide"
 )
 st.title("BESS Model")

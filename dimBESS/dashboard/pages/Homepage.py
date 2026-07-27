@@ -4,10 +4,11 @@ import pandas as pd
 import streamlit as st
 
 import dimBESS
+import theme
 
 st.set_page_config(
     page_title="BESS Dashboard - Homepage",
-    page_icon=":house:",
+    page_icon=theme.LOGO_IMAGE,
     layout="wide"
 )
 st.title("BESS Model")

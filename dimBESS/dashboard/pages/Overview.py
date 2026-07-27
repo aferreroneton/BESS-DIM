@@ -8,7 +8,7 @@ from scenario_selector import require_scenario
 
 st.set_page_config(
     page_title="BESS Dashboard - Overview",
-    page_icon=":information_source:",
+    page_icon=theme.LOGO_IMAGE,
     layout="wide"
 )
 st.title("BESS Model")
@@ -48,29 +48,29 @@ with table_col:
     col1.markdown("<div style='text-align:left; font-weight:bold;'> </div>", unsafe_allow_html=True)
     col2.markdown(f"<div style='background-color:{theme.NAVY_TINT}; text-align:left; font-weight:bold;'>As-Is from Grid</div>", unsafe_allow_html=True)
     col3.markdown(f"<div style='background-color:{theme.CYAN_TINT}; text-align:left; font-weight:bold;'>> Phase 1: PV Direct SC</div>", unsafe_allow_html=True)
-    col4.markdown(f"<div style='background-color:{theme.CORAL_TINT}; text-align:left; font-weight:bold;'>> Phase 2: PV Direct SC + BESS</div>", unsafe_allow_html=True)
-    col5.markdown(f"<div style='background-color:{theme.CORAL_TINT}; text-align:left; font-weight:bold;'>BESS Operations</div>", unsafe_allow_html=True)
+    col4.markdown(f"<div style='background-color:{theme.NAVY_TINT}; text-align:left; font-weight:bold;'>> Phase 2: PV Direct SC + BESS</div>", unsafe_allow_html=True)
+    col5.markdown(f"<div style='background-color:{theme.NAVY_TINT}; text-align:left; font-weight:bold;'>BESS Operations</div>", unsafe_allow_html=True)
 
     r1c1, r1c2, r1c3, r1c4, r1c5 = st.columns(5)
     r1c1.markdown("Energy MWh")
     r1c2.markdown(aux_functions.metric_cell(calc_data["MWh Demand"], "MWh Demand"), unsafe_allow_html=True)
     r1c3.markdown(aux_functions.metric_cell(calc_data["MWh Unmet Demand after Direct SC"], "MWh Unmet Demand after Direct SC"), unsafe_allow_html=True)
     r1c4.markdown(aux_functions.metric_cell(calc_data["MWh Unmet Demand after BESS"], "MWh Unmet Demand after BESS"), unsafe_allow_html=True)
-    r1c5.markdown(aux_functions.metric_cell(calc_data["MWh Charge from PV"], "MWh Charge from PV", bg_color=theme.CORAL_TINT), unsafe_allow_html=True)
+    r1c5.markdown(aux_functions.metric_cell(calc_data["MWh Charge from PV"], "MWh Charge from PV", bg_color=theme.NAVY_TINT), unsafe_allow_html=True)
 
     r2c1, r2c2, r2c3, r2c4, r2c5 = st.columns(5)
     r2c1.markdown("")
     r2c2.markdown("")
     r2c3.markdown(aux_functions.metric_cell(calc_data["MWh PV Direct SC"], "MWh PV Direct SC"), unsafe_allow_html=True)
     r2c4.markdown(aux_functions.metric_cell(calc_data["MWh PV Direct SC"], "MWh PV Direct SC"), unsafe_allow_html=True)
-    r2c5.markdown(aux_functions.metric_cell(calc_data["MWh Charge from Grid"], "MWh Charge from Grid", bg_color=theme.CORAL_TINT), unsafe_allow_html=True)
+    r2c5.markdown(aux_functions.metric_cell(calc_data["MWh Charge from Grid"], "MWh Charge from Grid", bg_color=theme.NAVY_TINT), unsafe_allow_html=True)
 
     r3c1, r3c2, r3c3, r3c4, r3c5 = st.columns(5)
     r3c1.markdown("")
     r3c2.markdown("")
     r3c3.markdown("")
     r3c4.markdown(aux_functions.metric_cell(calc_data["MWh BESS Discharge"], "MWh BESS Discharge"), unsafe_allow_html=True)
-    r3c5.markdown(aux_functions.metric_cell(calc_data["% Charge from PV"], "% Charge from PV", suffix=" %", bg_color=theme.CORAL_TINT), unsafe_allow_html=True)
+    r3c5.markdown(aux_functions.metric_cell(calc_data["% Charge from PV"], "% Charge from PV", suffix=" %", bg_color=theme.NAVY_TINT), unsafe_allow_html=True)
 
 with chart_col:
     fig = px.pie(
@@ -101,8 +101,8 @@ with chart_col:
         ),
         height=165,
         margin=dict(t=40, b=40, l=0, r=0),
-        paper_bgcolor=theme.CORAL_TINT,
-        plot_bgcolor=theme.CORAL_TINT
+        paper_bgcolor=theme.NAVY_TINT,
+        plot_bgcolor=theme.NAVY_TINT
     )
 
     st.plotly_chart(fig, use_container_width=True)
@@ -114,32 +114,32 @@ col1_2.markdown("<div style='text-align:left; font-weight:bold;'> </div>", unsaf
 col2_2.markdown("<div style='text-align:left; font-weight:bold;'> </div>", unsafe_allow_html=True)
 col3_2.markdown("<div style='text-align:left; font-weight:bold;'> </div>", unsafe_allow_html=True)
 col4_2.markdown("<div style='text-align:left; font-weight:bold;'> </div>", unsafe_allow_html=True)
-col5_2.markdown(f"<div style='background-color:{theme.CORAL_TINT}; text-align:left; font-weight:bold;> </div>", unsafe_allow_html=True)
-col6_2.markdown(f"<div style='background-color:{theme.CORAL_TINT}; text-align:left; font-weight:bold;'>Spread</div>", unsafe_allow_html=True)
+col5_2.markdown(f"<div style='background-color:{theme.NAVY_TINT}; text-align:left; font-weight:bold;> </div>", unsafe_allow_html=True)
+col6_2.markdown(f"<div style='background-color:{theme.NAVY_TINT}; text-align:left; font-weight:bold;'>Spread</div>", unsafe_allow_html=True)
 
 r4c1, r4c2, r4c3, r4c4, r4c5, r4c6 = st.columns(6)
 r4c1.markdown("Cost €")
 r4c2.markdown(aux_functions.metric_cell(calc_data["€ Cost As-Is"], "€ Cost As-Is"), unsafe_allow_html=True)
 r4c3.markdown(aux_functions.metric_cell(calc_data["€ Cost Grid Phase 1"], "€ Cost Grid Phase 1"), unsafe_allow_html=True)
 r4c4.markdown(aux_functions.metric_cell(calc_data["€ Cost Grid Phase 2"], "€ Cost Grid Phase 2"), unsafe_allow_html=True)
-r4c5.markdown(aux_functions.metric_cell(calc_data["€ Cost charging from PV"], "€ Cost charging from PV", bg_color=theme.CORAL_TINT), unsafe_allow_html=True)
-r4c6.markdown(aux_functions.metric_cell(calc_data["€/MWh BESS Replaced Price"], "€/MWh BESS Replaced Price", bg_color=theme.CORAL_TINT), unsafe_allow_html=True)
+r4c5.markdown(aux_functions.metric_cell(calc_data["€ Cost charging from PV"], "€ Cost charging from PV", bg_color=theme.NAVY_TINT), unsafe_allow_html=True)
+r4c6.markdown(aux_functions.metric_cell(calc_data["€/MWh BESS Replaced Price"], "€/MWh BESS Replaced Price", bg_color=theme.NAVY_TINT), unsafe_allow_html=True)
 
 r5c1, r5c2, r5c3, r5c4, r5c5, r5c6 = st.columns(6)
 r5c1.markdown("")
 r5c2.markdown("")
 r5c3.markdown(aux_functions.metric_cell(calc_data["€ Cost PV Direct SC"], "€ Cost PV Direct SC"), unsafe_allow_html=True)
 r5c4.markdown(aux_functions.metric_cell(calc_data["€ Cost PV Direct SC"], "€ Cost PV Direct SC"), unsafe_allow_html=True)
-r5c5.markdown(aux_functions.metric_cell(calc_data["€ Cost charging from Grid"], "€ Cost charging from Grid", bg_color=theme.CORAL_TINT), unsafe_allow_html=True)
-r5c6.markdown(aux_functions.metric_cell(calc_data["€/MWh BESS Discharge"], "€/MWh BESS Discharge", bg_color=theme.CORAL_TINT), unsafe_allow_html=True)
+r5c5.markdown(aux_functions.metric_cell(calc_data["€ Cost charging from Grid"], "€ Cost charging from Grid", bg_color=theme.NAVY_TINT), unsafe_allow_html=True)
+r5c6.markdown(aux_functions.metric_cell(calc_data["€/MWh BESS Discharge"], "€/MWh BESS Discharge", bg_color=theme.NAVY_TINT), unsafe_allow_html=True)
 
 r6c1, r6c2, r6c3, r6c4, r6c5, r6c6 = st.columns(6)
 r6c1.markdown("")
 r6c2.markdown("")
 r6c3.markdown("")
 r6c4.markdown(aux_functions.metric_cell(calc_data["€ Cost charging"], "€ Cost charging"), unsafe_allow_html=True)
-r6c5.markdown(aux_functions.metric_cell(calc_data["€ BESS Replaced Cost"], "€ BESS Replaced Cost", bg_color=theme.CORAL_TINT), unsafe_allow_html=True)
-r6c6.markdown(aux_functions.metric_cell(calc_data["€/MWh BESS Captured Spread"], "€/MWh BESS Captured Spread", bg_color=theme.CORAL_TINT), unsafe_allow_html=True)
+r6c5.markdown(aux_functions.metric_cell(calc_data["€ BESS Replaced Cost"], "€ BESS Replaced Cost", bg_color=theme.NAVY_TINT), unsafe_allow_html=True)
+r6c6.markdown(aux_functions.metric_cell(calc_data["€/MWh BESS Captured Spread"], "€/MWh BESS Captured Spread", bg_color=theme.NAVY_TINT), unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -148,32 +148,32 @@ col1_3.markdown("<div style='text-align:left; font-weight:bold;'> </div>", unsaf
 col2_3.markdown("<div style='text-align:left; font-weight:bold;'> </div>", unsafe_allow_html=True)
 col3_3.markdown("<div style='text-align:left; font-weight:bold;'> </div>", unsafe_allow_html=True)
 col4_3.markdown("<div style='text-align:left; font-weight:bold;'> </div>", unsafe_allow_html=True)
-col5_3.markdown(f"<div style='background-color:{theme.CORAL_TINT}; text-align:left; font-weight:bold;> </div>", unsafe_allow_html=True)
-col6_3.markdown(f"<div style='background-color:{theme.CORAL_TINT}; text-align:left; font-weight:bold;'>Performance KPIs</div>", unsafe_allow_html=True)
+col5_3.markdown(f"<div style='background-color:{theme.NAVY_TINT}; text-align:left; font-weight:bold;> </div>", unsafe_allow_html=True)
+col6_3.markdown(f"<div style='background-color:{theme.NAVY_TINT}; text-align:left; font-weight:bold;'>Performance KPIs</div>", unsafe_allow_html=True)
 
 r7c1, r7c2, r7c3, r7c4, r7c5, r7c6 = st.columns(6)
 r7c1.markdown("€/MWh")
 r7c2.markdown(aux_functions.metric_cell(calc_data["€/MWh As-Is"], "€/MWh As-Is"), unsafe_allow_html=True)
 r7c3.markdown(aux_functions.metric_cell(calc_data["€/MWh Phase 1 Grid"], "€/MWh Phase 1 Grid"), unsafe_allow_html=True)
 r7c4.markdown(aux_functions.metric_cell(calc_data["€/MWh Phase 2 Grid"], "€/MWh Phase 2 Grid"), unsafe_allow_html=True)
-r7c5.markdown(aux_functions.metric_cell(calc_data["€/MWh Charge from PV"], "€/MWh Charge from PV", bg_color=theme.CORAL_TINT), unsafe_allow_html=True)
-r7c6.markdown(aux_functions.metric_cell(calc_data["KPI Captured Spread"], "KPI Captured Spread", suffix=" %", bg_color=theme.CORAL_TINT), unsafe_allow_html=True)
+r7c5.markdown(aux_functions.metric_cell(calc_data["€/MWh Charge from PV"], "€/MWh Charge from PV", bg_color=theme.NAVY_TINT), unsafe_allow_html=True)
+r7c6.markdown(aux_functions.metric_cell(calc_data["KPI Captured Spread"], "KPI Captured Spread", suffix=" %", bg_color=theme.NAVY_TINT), unsafe_allow_html=True)
 
 r8c1, r8c2, r8c3, r8c4, r8c5, r8c6 = st.columns(6)
 r8c1.markdown("")
 r8c2.markdown("")
 r8c3.markdown(aux_functions.metric_cell(calc_data["€/MWh PV Direct SC"], "€/MWh PV Direct SC"), unsafe_allow_html=True)
 r8c4.markdown(aux_functions.metric_cell(calc_data["€/MWh PV Direct SC"], "€/MWh PV Direct SC"), unsafe_allow_html=True)
-r8c5.markdown(aux_functions.metric_cell(calc_data["€/MWh Charge from Grid"], "€/MWh Charge from Grid", bg_color=theme.CORAL_TINT), unsafe_allow_html=True)
-r8c6.markdown(aux_functions.metric_cell(calc_data["KPI BESS Utilization (Cycles/Day)"], "KPI BESS Utilization (Cycles/Day)", suffix=" %", bg_color=theme.CORAL_TINT), unsafe_allow_html=True)
+r8c5.markdown(aux_functions.metric_cell(calc_data["€/MWh Charge from Grid"], "€/MWh Charge from Grid", bg_color=theme.NAVY_TINT), unsafe_allow_html=True)
+r8c6.markdown(aux_functions.metric_cell(calc_data["KPI BESS Utilization (Cycles/Day)"], "KPI BESS Utilization (Cycles/Day)", suffix=" %", bg_color=theme.NAVY_TINT), unsafe_allow_html=True)
 
 r9c1, r9c2, r9c3, r9c4, r9c5, r9c6 = st.columns(6)
 r9c1.markdown("")
 r9c2.markdown("")
 r9c3.markdown("")
 r9c4.markdown(aux_functions.metric_cell(calc_data["€/MWh BESS Discharge"], "€/MWh BESS Discharge"), unsafe_allow_html=True)
-r9c5.markdown(aux_functions.metric_cell(calc_data["€/MWh Charge Blended"], "€/MWh Charge Blended", bg_color=theme.CORAL_TINT), unsafe_allow_html=True)
-r9c6.markdown(aux_functions.metric_cell(calc_data["KPI Charging Optimization"], "KPI Charging Optimization", suffix=" %", bg_color=theme.CORAL_TINT), unsafe_allow_html=True)
+r9c5.markdown(aux_functions.metric_cell(calc_data["€/MWh Charge Blended"], "€/MWh Charge Blended", bg_color=theme.NAVY_TINT), unsafe_allow_html=True)
+r9c6.markdown(aux_functions.metric_cell(calc_data["KPI Charging Optimization"], "KPI Charging Optimization", suffix=" %", bg_color=theme.NAVY_TINT), unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 

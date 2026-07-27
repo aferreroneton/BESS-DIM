@@ -9,7 +9,7 @@ from scenario_selector import require_scenario
 
 st.set_page_config(
     page_title="BESS Dashboard - Operation",
-    page_icon=":chart_with_upwards_trend:",
+    page_icon=theme.LOGO_IMAGE,
     layout="wide"
 )
 st.title("BESS Model")
@@ -119,8 +119,8 @@ with chart_col:
         "MWh BESS Discharge"            :   theme.NAVY_DARK,
         "MWh Unmet Demand after BESS"   :   "#E6E6E6",
         "MWh Unstored Surplus"          :   theme.ORANGE,
-        "MWh Charge from Grid"          :   theme.CORAL_DARK,
-        "Grid Charging Price"           :   theme.CORAL_LIGHT,
+        "MWh Charge from Grid"          :   theme.NAVY_LIGHT,
+        "Grid Charging Price"           :   theme.NAVY_DARK,
         "PV Charging Price"             :   theme.CYAN_SOFT
     }
 
