@@ -11,7 +11,7 @@ import theme
 
 #----------------------------------------BRANDING----------------------------------------
 
-st.logo(theme.LOGO_FULL_WHITE_PATH, size="small")
+st.logo(theme.LOGO_FULL_WHITE_PATH, size="large")
 
 st.markdown(
     """
@@ -32,6 +32,14 @@ st.markdown(
     [data-testid="stSidebarNav"] a[aria-current="page"] {
         background-color: rgba(255, 255, 255, 0.20);
         font-weight: 700;
+    }
+    /* Los desplegables (ej. selector de escenario) abren un popover con fondo
+       claro; la regla de arriba pone el texto en blanco para todo lo que cuelga
+       del sidebar, incluido ese popover, dejándolo ilegible (blanco sobre blanco).
+       Se restaura el texto oscuro solo dentro del popover/listbox. */
+    [data-testid="stSidebar"] [data-baseweb="popover"],
+    [data-testid="stSidebar"] [data-baseweb="popover"] * {
+        color: #2E2C67 !important;
     }
     </style>
     """,

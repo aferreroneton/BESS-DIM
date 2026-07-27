@@ -56,7 +56,7 @@ with table_col:
         title="KPI Captured Spread",
         gauge={
             "axis": {"range": [0, 100]},
-            "bar": {"color": theme.CORAL_DARK},
+            "bar": {"color": theme.CHART_NAVY},
             "bgcolor": "white",
         }
     ))
@@ -84,7 +84,7 @@ with table_col:
         title="KPI BESS Utilization (Cycles/Day)",
         gauge={
             "axis": {"range": [0, 100]},
-            "bar": {"color": theme.CORAL_DARK},
+            "bar": {"color": theme.CHART_NAVY},
             "bgcolor": "white",
         }
     ))
@@ -109,7 +109,7 @@ with table_col:
         title="KPI Charging Optimization",
         gauge={
             "axis": {"range": [0, 100]},
-            "bar": {"color": theme.CORAL_DARK},
+            "bar": {"color": theme.CHART_NAVY},
             "bgcolor": "white",
         }
     ))
@@ -160,7 +160,7 @@ with chart_col:
             x=calc_data_freq.index,
             y=calc_data_freq["€/MWh BESS Captured Spread"],
             name="€/MWh BESS Captured Spread",
-            marker_color=theme.CORAL_DARK,
+            marker_color=theme.CHART_NAVY_LIGHT,
             text=[f"{v:.2f}" for v in calc_data_freq["€/MWh BESS Captured Spread"]],
             textposition="outside",
             textfont=dict(color="black", size=10),
@@ -173,7 +173,7 @@ with chart_col:
             y=calc_data_freq["€/MWh AVG Min Price to Charge"],
             name="€/MWh AVG Min Price to Charge",
             mode="lines+markers",
-            line=dict(color=theme.ORANGE, width=1)
+            line=dict(color=theme.CORAL_DARK, width=1)
         )
     )
 
@@ -183,7 +183,7 @@ with chart_col:
             y=calc_data_freq["€/MWh AVG Max Price to Replace"],
             name="€/MWh AVG Max Price to Replace",
             mode="lines+markers",
-            line=dict(color=theme.CYAN, width=1)
+            line=dict(color=theme.ORANGE, width=1)
         )
     )
 
@@ -216,7 +216,7 @@ with chart_col:
             x=calc_data_freq.index,
             y=calc_data_freq["# BESS Cycles"],
             name="# BESS Cycles",
-            marker_color=theme.CORAL_DARK,
+            marker_color=theme.CHART_NAVY_LIGHT,
             yaxis="y",
             text=[f"{v:.2f}" for v in calc_data_freq["# BESS Cycles"]],
             textposition="outside",
@@ -230,7 +230,7 @@ with chart_col:
             y=calc_data_freq["KPI BESS Utilization (Cycles/Day)"],
             name="KPI BESS Utilization (Cycles/Day)",
             mode="lines+markers+text",
-            line=dict(color=theme.ORANGE, width=1),
+            line=dict(color=theme.CORAL_DARK, width=1),
             yaxis="y2"
         )
     )
@@ -260,7 +260,7 @@ with chart_col:
             x=calc_data_freq.index,
             y=calc_data_freq["# Charging hours / Day"],
             name="# Charging hours / Day",
-            marker_color=theme.CORAL_DARK,
+            marker_color=theme.CHART_NAVY,
             yaxis="y",
             text=[f"{v:.2f}" for v in calc_data_freq["# Charging hours / Day"]],
             textposition="inside",
@@ -273,7 +273,7 @@ with chart_col:
             x=calc_data_freq.index,
             y=calc_data_freq["# C/D Hours by C-Factor"],
             name="# C/D Hours by C-Factor",
-            marker_color=theme.CHART_NAVY,
+            marker_color=theme.CHART_NAVY_LIGHT,
             yaxis="y",
             text=[f"{v:.2f}" for v in calc_data_freq["# C/D Hours by C-Factor"]],
             textposition="outside",
@@ -287,7 +287,7 @@ with chart_col:
             y=calc_data_freq["KPI Charging Optimization"],
             name="KPI Charging Optimization",
             mode="lines+markers+text",
-            line=dict(color=theme.ORANGE, width=1),
+            line=dict(color=theme.CORAL_DARK, width=1),
             yaxis="y2"
         )
     )
