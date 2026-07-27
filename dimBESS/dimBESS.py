@@ -65,7 +65,7 @@ SAVINGS_MODEL2_PCT_CHARGE_PV_MAX = 0.65
 
 SAVINGS_MODEL2_VALID_TARIFFS = set(SAVINGS_MODEL2_B_TARIFF.keys())
 
-DEFAULT_HORIZON_YEARS = 20
+DEFAULT_HORIZON_YEARS = 15
 
 # Estrategias de carga soportadas actualmente por el motor de cálculo.
 SUPPORTED_SURPLUS_STRATEGIES = {"PV surplus first", "Best price PV vs Grid"}
@@ -265,6 +265,8 @@ def _solve_combo(
         savings_threshold
 ):
 
+    data = data_base.copy()
+
     container_type = scenario["Container Type"]
     nominal_capacity = scenario["Nominal Capacity"]
     n_containers = scenario["N Containers"]
@@ -296,7 +298,10 @@ def _solve_combo(
     savings_total_n_years = savings_bess_n_years + savings_ppa_n_years
 
     annual_leasing_cost = scenario["€ Leasing Monthly"]*n_containers*12
-    leasing_total_n_years = annual_leasing_cost*horizon_years
+    if horizon_years > 15:
+        leasing_total_n_years = annual_leasing_cost*15
+    else:
+        leasing_total_n_years = annual_leasing_cost*horizon_years
 
     savings_pct = ((savings_total_n_years - leasing_total_n_years) / leasing_total_n_years)*100
 
