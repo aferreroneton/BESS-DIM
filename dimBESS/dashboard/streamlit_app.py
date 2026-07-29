@@ -61,6 +61,12 @@ page0 = st.Page(
     icon="🛠️"
 )
 
+page_results = st.Page(
+    page="pages/Scenario_Results.py",
+    title="Scenario Results",
+    icon="📋"
+)
+
 page1 = st.Page(
     page="pages/Overview.py",
     title="Scenario Overview",
@@ -87,7 +93,7 @@ page4 = st.Page(
 
 #----------------------------------------NAVIGATION SETUP----------------------------------------
 
-pg = st.navigation(pages=[home_page, page0, page1, page2, page3, page4])
+pg = st.navigation(pages=[home_page, page0, page_results, page1, page2, page3, page4])
 
 #----------------------------------------RUN SETUP----------------------------------------
 
