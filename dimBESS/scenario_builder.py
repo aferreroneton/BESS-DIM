@@ -78,6 +78,7 @@ def build_scenario(
     original_ppa_price,
     discharge_cost=0.0,
     tolls=1,
+    study_type="Base study",
 ):
     """Construye un dict de escenario con el mismo esquema que dimBESS.load_scenarios()."""
 
@@ -85,6 +86,8 @@ def build_scenario(
         raise ValueError(f"Type of Container desconocido: {container_type}")
     if surplus_strategy not in dimBESS.SUPPORTED_SURPLUS_STRATEGIES:
         raise ValueError(f"Surplus Strategy desconocida: {surplus_strategy}")
+    if study_type not in dimBESS.SUPPORTED_STUDY_TYPES:
+        raise ValueError(f"Study Type desconocido: {study_type}")
 
     nominal_capacity = CONTAINER_NOMINAL_CAPACITY[container_type]
     dod = CONTAINER_DOD[container_type]
@@ -118,6 +121,7 @@ def build_scenario(
         "Cycles/Day"                        :   float(cycles_day),
         "tolls"                             :   tolls,
         "€ Leasing Monthly"                 :   float(leasing_monthly),
+        "Study Type"                        :   study_type,
         # Campos informativos (no consumidos por solve_scenario, pero mostrados en el builder
         # para replicar 1:1 lo que se ve en la hoja Scenarios):
         "Client Rating"                     :   client_rating,

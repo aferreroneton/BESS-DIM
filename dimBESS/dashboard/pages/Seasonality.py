@@ -8,7 +8,7 @@ from scenario_selector import require_scenario
 
 st.set_page_config(
     page_title="BESS Dashboard - Seasonality",
-    page_icon=theme.LOGO_IMAGE,
+    page_icon=theme.logo_image(),
     layout="wide"
 )
 st.title("BESS Model")
@@ -40,7 +40,7 @@ carga["Mes"] = data_reset["Month num"].map(meses)
 carga["Mes"] = pd.Categorical(carga["Mes"], categories=month_order, ordered=True)
 carga["Hora"] = data_reset["HourOfDay"]
 carga["Periodo"] = data_reset["Period"]
-carga["Weekday"] = pd.Categorical(data_reset["Weekday"], categories=weekday_order, ordered=True)
+carga["Weekday"] = pd.Categorical(data_reset["Weekday name"], categories=weekday_order, ordered=True)
 carga["PV"] = results_reset["Carga de PV"]
 carga["Red"] = results_reset["Carga de red"]
 carga["Total"] = carga["PV"] + carga["Red"]

@@ -48,46 +48,55 @@ st.markdown(
 
 #----------------------------------------PAGE SETUP----------------------------------------
 
+# Iconos ":material/xxx:" (Google Material Symbols, integrados en Streamlit >=1.31):
+# son glifos de fuente vectorial, no imágenes, así que heredan el color del texto del
+# nav (blanco, ver CSS de arriba) sin tener que descargar ni recolorear nada.
 home_page = st.Page(
     page="pages/Homepage.py",
     title="Homepage",
-    icon="🏠",
+    icon=":material/home:",
     default=True
 )
 
 page0 = st.Page(
     page="pages/Scenario_Builder.py",
     title="Scenario Builder",
-    icon="🛠️"
+    icon=":material/build:"
+)
+
+page_results = st.Page(
+    page="pages/Scenario_Results.py",
+    title="Scenario Results",
+    icon=":material/fact_check:"
 )
 
 page1 = st.Page(
     page="pages/Overview.py",
     title="Scenario Overview",
-    icon="ℹ️"
+    icon=":material/dashboard:"
 )
 
 page2 = st.Page(
     page="pages/Performance.py",
     title="Performance KPIs",
-    icon="📊"
+    icon=":material/monitoring:"
 )
 
 page3 = st.Page(
     page="pages/Operation.py",
     title="BESS Operation Visualizer",
-    icon="📈"
+    icon=":material/bolt:"
 )
 
 page4 = st.Page(
     page="pages/Seasonality.py",
     title="BESS Operation Seasonality",
-    icon="📆"
+    icon=":material/calendar_month:"
 )
 
 #----------------------------------------NAVIGATION SETUP----------------------------------------
 
-pg = st.navigation(pages=[home_page, page0, page1, page2, page3, page4])
+pg = st.navigation(pages=[home_page, page0, page_results, page1, page2, page3, page4])
 
 #----------------------------------------RUN SETUP----------------------------------------
 

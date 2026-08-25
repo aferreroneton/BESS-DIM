@@ -8,7 +8,7 @@ from scenario_selector import require_scenario
 
 st.set_page_config(
     page_title="BESS Dashboard - Overview",
-    page_icon=theme.LOGO_IMAGE,
+    page_icon=theme.logo_image(),
     layout="wide"
 )
 st.title("BESS Model")

@@ -6,7 +6,7 @@ import theme
 
 st.set_page_config(
     page_title="BESS Dashboard - Scenario Builder",
-    page_icon=theme.LOGO_IMAGE,
+    page_icon=theme.logo_image(),
     layout="wide"
 )
 st.title("BESS Model")
@@ -21,6 +21,8 @@ st.caption(f"CUPS: **{cups_info['Client']}** · {cups_info['Plant']} · Tarifa *
 
 if "scenario_results" not in st.session_state:
     st.session_state["scenario_results"] = {}
+if "kpi_rows" not in st.session_state:
+    st.session_state["kpi_rows"] = {}
 
 col_form, col_preview = st.columns([2, 1])
 
@@ -53,6 +55,12 @@ with col_form:
 
     discharge_cost = st.number_input("Discharge Cost (opcional)", min_value=0.0, value=0.0, step=0.1)
 
+    study_type = st.selectbox(
+        "Study Type", sorted(dimBESS.SUPPORTED_STUDY_TYPES),
+        help="Extended study resuelve también año 10 y año 20 (proyectados) para una curva de "
+             "ahorro propia del escenario, en vez del modelo de regresión externo. ~3x más lento."
+    )
+
 with col_preview:
     st.markdown("#### Vista previa")
 
@@ -71,6 +79,7 @@ with col_preview:
             ppa_price=ppa_price,
             original_ppa_price=original_ppa_price,
             discharge_cost=discharge_cost,
+            study_type=study_type,
         )
     except ValueError as e:
         st.error(str(e))
@@ -89,13 +98,38 @@ if already_solved:
     st.info("Ya existe un escenario resuelto con este mismo nombre; al resolver se sobrescribirá.")
 
 if st.button("Resolver y añadir al dashboard"):
-    with st.spinner(f"Resolviendo '{scenario['Scenario']}'..."):
+    horizon_years, savings_threshold = st.session_state.get("kpi_params", (dimBESS.DEFAULT_HORIZON_YEARS, 20.0))
+
+    extension_data = None
+    y1 = None
+    spinner_msg = f"Resolviendo '{scenario['Scenario']}'..."
+    if study_type == "Extended study":
+        spinner_msg = f"Resolviendo '{scenario['Scenario']}' (Extended study: año 1, 10 y 20, ~3x más lento)..."
+
+    with st.spinner(spinner_msg):
+        if study_type == "Extended study":
+            # Periodos/precios/curvas no dependen del escenario: se cargan una vez y se
+            # reutilizan para cualquier otro escenario Extended study que se añada después.
+            if "extension_data" not in st.session_state:
+                st.session_state["extension_data"] = dimBESS.load_extension_data(
+                    st.session_state["source_file"], cups_info["Tariff"]
+                )
+            extension_data = st.session_state["extension_data"]
+            y1 = int(st.session_state["data_base"]["Year"].dropna().iloc[0])
+
         model, results, inputs = dimBESS.solve_scenario(st.session_state["data_base"], scenario)
+        kpi_row = dimBESS.kpi_row_from_results(
+            st.session_state["data_base"], scenario, results, inputs,
+            horizon_years, savings_threshold, extension_data, y1
+        )
+
     st.session_state["scenario_results"][scenario["Scenario"]] = {
         "results": results,
         "inputs": inputs,
         "scenario": scenario,
     }
+    st.session_state["kpi_rows"][scenario["Scenario"]] = kpi_row
+    st.session_state["kpi_params"] = (horizon_years, savings_threshold)
     st.session_state["selected_scenario"] = scenario["Scenario"]
-    st.success(f"Escenario '{scenario['Scenario']}' resuelto y añadido.")
+    st.success(f"Escenario '{scenario['Scenario']}' resuelto y añadido (visualización + Scenario Results).")
     st.rerun()

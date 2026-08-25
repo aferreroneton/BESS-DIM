@@ -8,10 +8,16 @@ LOGO_PATH = str(Path(__file__).resolve().parent / "logo.png")
 LOGO_FULL_PATH = str(Path(__file__).resolve().parent / "logo_completo.png")
 LOGO_FULL_WHITE_PATH = str(Path(__file__).resolve().parent / "logo_completo_blanco.png")
 
-# Usar un objeto PIL.Image en vez de la ruta como string al pasarlo a
-# st.set_page_config(page_icon=...): en Streamlit 1.52 pasar la ruta directamente
-# rompe la barra lateral de navegación multipágina (bug interno de Streamlit).
-LOGO_IMAGE = Image.open(LOGO_PATH)
+def logo_image():
+    """
+    Objeto PIL.Image fresco para page_icon=... (en vez de la ruta como string: en
+    Streamlit 1.52 pasar la ruta directamente rompe la barra lateral de navegación
+    multipágina). Debe ser una instancia NUEVA en cada llamada, no un singleton
+    reutilizado: Pillow libera el estado interno del PNG tras el primer .load()/.save(),
+    así que reutilizar el mismo objeto Image en páginas/reruns sucesivos revienta con
+    "AssertionError: self.png is not None" a partir del segundo uso.
+    """
+    return Image.open(LOGO_PATH)
 
 CORAL_DARK = "#C24A4C"
 CORAL_LIGHT = "#D06365"
