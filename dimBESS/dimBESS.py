@@ -455,6 +455,7 @@ def kpi_row_from_results(data_base, scenario, results, inputs, horizon_years, sa
 
     return {
         "Scenario"                                          :   scenario["Scenario"],
+        "Client"                                            :   client_from_scenario_name(scenario["Scenario"]),
         "Study Type"                                        :   study_type,
         "Container Type"                                    :   container_type,
         "N Containers"                                      :   n_containers,
@@ -546,6 +547,17 @@ def solve_and_analyze_scenarios(
     kpi_rows = {name: kpi_row for name, results, inputs, scenario, kpi_row in raw}
 
     return scenario_results, kpi_rows
+
+
+def client_from_scenario_name(name):
+    """
+    Agrupador "Cliente" para Scenario Results: todo lo que va antes del segundo '_' del
+    nombre de escenario (Client_Plant_ContainerType_NContainer_SizeMWh_PriceMode), es
+    decir Client_Plant combinados -- el sitio/CUPS que generó ese escenario.
+    """
+
+    parts = str(name).split("_")
+    return "_".join(parts[:2]) if len(parts) >= 2 else str(name)
 
 
 def build_results_table(kpi_rows):

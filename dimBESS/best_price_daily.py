@@ -45,8 +45,8 @@ def _build_daily_model(
 
     model.Gch = Var(model.T, within=NonNegativeReals, bounds=(0, PCH_MAX))
     model.PVch = Var(model.T, within=NonNegativeReals, bounds=(0, PCH_MAX))
-    model.Bdis = Var(model.T, within=NonNegativeReals, bounds=(0, PDIS_MAX))
     model.u = Var(model.T, within=Binary)
+    model.v = Var(model.T, within=Binary)
 
     def importdemand_bounds(m, t):
         unmet_demand = demand[t] - pv_prod[t]
@@ -54,6 +54,16 @@ def _build_daily_model(
         return (0, upper_bound)
 
     model.ImportDemand = Var(model.T, within=NonNegativeReals, bounds=importdemand_bounds)
+
+    def bdis_bounds(m, t):
+        # La descarga no puede superar la demanda que queda por cubrir tras el PV
+        # directo: si no, el BESS podría "descargar a la nada" (verter a red) sin
+        # coste si discharge_cost=0, en vez de servir demanda real.
+        unmet_demand = demand[t] - pv_prod[t]
+        upper_bound = min(PDIS_MAX, unmet_demand) if unmet_demand > 0 else 0
+        return (0, upper_bound)
+
+    model.Bdis = Var(model.T, within=NonNegativeReals, bounds=bdis_bounds)
 
     def soc_bounds(m, t):
         return (SOC_MIN, soc_max_effective[t])
@@ -101,6 +111,16 @@ def _build_daily_model(
         return m.Bdis[t] <= PDIS_MAX * (1 - m.u[t])
 
     model.no_simul_2 = Constraint(model.T, rule=no_simul_chdis_2)
+
+    def no_simul_charge_1(m, t):
+        return m.Gch[t] <= PCH_MAX * m.v[t]
+
+    model.no_simul_charge_1 = Constraint(model.T, rule=no_simul_charge_1)
+
+    def no_simul_charge_2(m, t):
+        return m.PVch[t] <= PCH_MAX * (1 - m.v[t])
+
+    model.no_simul_charge_2 = Constraint(model.T, rule=no_simul_charge_2)
 
     def charge_window_rule(m, t):
         if window[t] == 1:
@@ -169,7 +189,7 @@ def opt_best_price_daily(data, inputs, tee=False):
     """
 
     HOURS_PER_DAY = 24
-    OFFSET = 6
+    OFFSET = 0
     E_MAX = inputs["Pot BESS"]*inputs["N containers"]
 
     demand = (data["Power demand kWh"]/1000).tolist()
@@ -246,7 +266,7 @@ def opt_best_price_daily(data, inputs, tee=False):
         pv_day = np.array(pv_surplus[sl])
         idx = np.where(pv_day>0)[0]
         last_pv = idx[-1] if len(idx) > 0 else -1
-        t_end = min(max(10, last_pv), nh - 1)
+        t_end = min(max(16, last_pv), nh - 1)
 
         window = np.zeros(nh)
         window[:t_end+1] = 1
