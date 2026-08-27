@@ -74,15 +74,21 @@ col_a, col_b = st.columns(2)
 with col_a:
     leasing_col = f"€ Leasing {hy}y"
     savings_col = f"€ Total Savings {hy}y"
+    net_savings = client_results[savings_col] - client_results[leasing_col]
 
     fig1 = go.Figure()
+    fig1.add_hline(y=0, line=dict(color=theme.MUTED, width=1, dash="dot"))
     fig1.add_trace(go.Scatter(
         x=x, y=client_results[leasing_col], name=f"€ Leasing {hy}y", mode="lines+markers",
         line=dict(color=theme.CHART_NAVY, width=2), marker=dict(size=9),
     ))
     fig1.add_trace(go.Scatter(
-        x=x, y=client_results[savings_col], name=f"€ Total Savings {hy}y", mode="lines+markers+text",
+        x=x, y=client_results[savings_col], name=f"€ Total Savings {hy}y", mode="lines+markers",
         line=dict(color=theme.CYAN, width=2), marker=dict(size=9),
+    ))
+    fig1.add_trace(go.Scatter(
+        x=x, y=net_savings, name=f"€ Net Savings {hy}y", mode="lines+markers+text",
+        line=dict(color=theme.ORANGE, width=2), marker=dict(size=9),
         text=labels, textposition="top center", textfont=dict(size=10, color="grey"),
     ))
     fig1.update_layout(
@@ -94,7 +100,7 @@ with col_a:
         margin=dict(t=40, b=10, l=10, r=10),
         height=380,
     )
-    st.plotly_chart(fig1, use_container_width=True)
+    st.plotly_chart(fig1, width="stretch")
 
 with col_b:
     marker_symbols = ["circle" if apto else "circle-open" for apto in client_results[threshold_col]]
@@ -120,4 +126,4 @@ with col_b:
         margin=dict(t=40, b=10, l=10, r=10),
         height=380,
     )
-    st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(fig2, width="stretch")
