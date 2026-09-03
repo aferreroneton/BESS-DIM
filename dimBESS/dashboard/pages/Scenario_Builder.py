@@ -117,10 +117,14 @@ if st.button("Resolver y añadir al dashboard"):
             extension_data = st.session_state["extension_data"]
             y1 = int(st.session_state["data_base"]["Year"].dropna().iloc[0])
 
+        if "leasing_tables" not in st.session_state:
+            st.session_state["leasing_tables"] = dimBESS.load_leasing_tables(st.session_state["source_file"])
+        leasing_tables = st.session_state["leasing_tables"]
+
         model, results, inputs = dimBESS.solve_scenario(st.session_state["data_base"], scenario)
         kpi_row = dimBESS.kpi_row_from_results(
             st.session_state["data_base"], scenario, results, inputs,
-            horizon_years, savings_threshold, extension_data, y1
+            horizon_years, savings_threshold, extension_data, y1, leasing_tables
         )
 
     st.session_state["scenario_results"][scenario["Scenario"]] = {

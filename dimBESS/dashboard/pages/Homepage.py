@@ -68,6 +68,7 @@ if (
     st.session_state["data_base"] = dimBESS.load_hourly_data(source_file)
     st.session_state["cups_info"] = dimBESS.read_cups_info(source_file)
     st.session_state.pop("extension_data", None)
+    st.session_state.pop("leasing_tables", None)
 
 scenario_names = [s["Scenario"] for s in scenarios]
 solved_names = list(st.session_state["scenario_results"].keys())

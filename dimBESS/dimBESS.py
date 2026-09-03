@@ -196,6 +196,48 @@ def read_cont_power_by_period(file, sheet_name="CUPS"):
     return df.set_index("Period")["ContPower (MW)"].to_dict()
 
 
+LEASING_TIER_BASE = "Full fee / Sin Subvención"
+LEASING_TIER_SUBSIDY = "Full fee / 25% subsidy"
+
+
+def load_leasing_tables(file, sheet_name="Leasing"):
+    """
+    Lee las dos franjas de leasing de la hoja 'Leasing': 'Full fee / Sin Subvención'
+    (columnas D:I) y 'Full fee / 25% subsidy' (columnas J:O) -- misma estructura de
+    filas (Leasing Scenario) x Client Rating (5-10) en ambas, desplazada 6 columnas.
+    Hoy solo se usa la primera franja (vía '€ Leasing Monthly', ya calculado en el
+    Excel); esto añade la segunda para poder comparar ambos casos en Scenario Results.
+
+    Devuelve {tier_label: {leasing_scenario: {client_rating: fee_eur_month}}}.
+    """
+
+    raw = pd.read_excel(file, sheet_name=sheet_name, header=None)
+    ratings = raw.iloc[1, 3:9].astype(int).tolist()
+
+    tables = {}
+    for label, col_start in [(LEASING_TIER_BASE, 3), (LEASING_TIER_SUBSIDY, 9)]:
+        table = {}
+        for row_idx in range(2, len(raw)):
+            leasing_scenario = raw.iloc[row_idx, 1]
+            if pd.isna(leasing_scenario):
+                continue
+            fees = raw.iloc[row_idx, col_start:col_start + 6].tolist()
+            table[leasing_scenario] = dict(zip(ratings, fees))
+        tables[label] = table
+
+    return tables
+
+
+def leasing_fee(leasing_tables, tier, leasing_scenario, client_rating):
+    try:
+        return float(leasing_tables[tier][leasing_scenario][client_rating])
+    except KeyError:
+        raise ValueError(
+            f"No hay tarifa de leasing '{tier}' para Leasing Scenario='{leasing_scenario}', "
+            f"Client Rating={client_rating}."
+        )
+
+
 def load_extension_data(file, tariff):
     """
     Carga las hojas adicionales del mismo Excel de entradas que necesita mwh_extension
@@ -295,6 +337,8 @@ def load_scenarios(file, sheet_name="Scenarios"):
             "tolls"             :   0, #-----------------------------------------------------------------------------------------TO-DO (WIP)
             "€ Leasing Monthly" :   float(row["€ Leasing Monthly"]),
             "Study Type"        :   study_type,
+            "Client Rating"     :   int(row["Client Rating"]),
+            "Leasing Scenario"  :   row["Leasing Scenario"],
         })
 
     return scenarios
@@ -389,7 +433,7 @@ def _solve_scenario_year_savings(data_year, scenario):
     return calc_year["€ Savings from BESS"]
 
 
-def kpi_row_from_results(data_base, scenario, results, inputs, horizon_years, savings_threshold, extension_data=None, y1=None):
+def kpi_row_from_results(data_base, scenario, results, inputs, horizon_years, savings_threshold, extension_data=None, y1=None, leasing_tables=None):
     """
     Calcula KPIs y proyección de ahorro a partir de un año 1 YA resuelto: no vuelve a
     llamar a solve_scenario, para que tanto el sweep en paralelo (solve_and_analyze_scenarios)
@@ -453,6 +497,23 @@ def kpi_row_from_results(data_base, scenario, results, inputs, horizon_years, sa
 
     savings_pct = ((savings_total_n_years - leasing_total_n_years) / leasing_total_n_years)*100
 
+    # Comparativa con la franja "Full fee / 25% subsidy" de la hoja Leasing: mismo
+    # savings_total_n_years (depende de la operación, no de la financiación), pero
+    # coste de leasing más bajo -> % Savings vs Leasing más alto.
+    annual_leasing_cost_subsidy = np.nan
+    leasing_total_n_years_subsidy = np.nan
+    savings_pct_subsidy = np.nan
+    if leasing_tables is not None:
+        monthly_fee_subsidy = leasing_fee(leasing_tables, LEASING_TIER_SUBSIDY, scenario["Leasing Scenario"], scenario["Client Rating"])
+        annual_leasing_cost_subsidy = monthly_fee_subsidy*n_containers*12
+        if horizon_years > 15:
+            leasing_total_n_years_subsidy = annual_leasing_cost_subsidy*15
+        else:
+            leasing_total_n_years_subsidy = annual_leasing_cost_subsidy*horizon_years
+        savings_pct_subsidy = ((savings_total_n_years - leasing_total_n_years_subsidy) / leasing_total_n_years_subsidy)*100
+
+    apto_subsidy = savings_pct_subsidy > savings_threshold if not np.isnan(savings_pct_subsidy) else np.nan
+
     return {
         "Scenario"                                          :   scenario["Scenario"],
         "Client"                                            :   client_from_scenario_name(scenario["Scenario"]),
@@ -477,10 +538,14 @@ def kpi_row_from_results(data_base, scenario, results, inputs, horizon_years, sa
         f"€ Leasing {horizon_years}y"                       :   leasing_total_n_years,
         "% Savings vs Leasing"                              :   savings_pct,
         "(>%.0f%%)" % savings_threshold                     :   savings_pct > savings_threshold,
+        "€ Annual Leasing (25% subsidy)"                    :   annual_leasing_cost_subsidy,
+        f"€ Leasing {horizon_years}y (25% subsidy)"         :   leasing_total_n_years_subsidy,
+        "% Savings vs Leasing (25% subsidy)"                :   savings_pct_subsidy,
+        "(>%.0f%% subsidy)" % savings_threshold             :   apto_subsidy,
     }
     
 
-def _solve_scenario_combined(data_base, scenario, horizon_years, savings_threshold, extension_data=None, y1=None):
+def _solve_scenario_combined(data_base, scenario, horizon_years, savings_threshold, extension_data=None, y1=None, leasing_tables=None):
     """
     Resuelve el año 1 UNA sola vez y devuelve tanto los resultados horarios crudos (para
     las páginas de visualización del dashboard) como la fila de KPIs/proyección de ahorro
@@ -491,7 +556,7 @@ def _solve_scenario_combined(data_base, scenario, horizon_years, savings_thresho
           f"= {scenario["Nominal Capacity"]*scenario["N Containers"]:.3f} MWh ({scenario.get("Study Type", "Base study")})")
 
     model, results, inputs = solve_scenario(data_base, scenario)
-    kpi_row = kpi_row_from_results(data_base, scenario, results, inputs, horizon_years, savings_threshold, extension_data, y1)
+    kpi_row = kpi_row_from_results(data_base, scenario, results, inputs, horizon_years, savings_threshold, extension_data, y1, leasing_tables)
 
     return scenario["Scenario"], results, inputs, scenario, kpi_row
 
@@ -522,6 +587,7 @@ def solve_and_analyze_scenarios(
         scenarios = [s for s in scenarios if s["Scenario"] in set(only)]
 
     data_base = load_hourly_data(file)
+    leasing_tables = load_leasing_tables(file)
 
     extension_data = None
     y1 = None
@@ -531,13 +597,13 @@ def solve_and_analyze_scenarios(
         y1 = int(data_base["Year"].dropna().iloc[0])
 
     if not parallel:
-        raw = [_solve_scenario_combined(data_base, scen, horizon_years, savings_threshold, extension_data, y1) for scen in scenarios]
+        raw = [_solve_scenario_combined(data_base, scen, horizon_years, savings_threshold, extension_data, y1, leasing_tables) for scen in scenarios]
     else:
         workers = n_workers or max(os.cpu_count() - 1, 1)
         raw = []
         with ProcessPoolExecutor(max_workers=workers) as executor:
             futures = {
-                executor.submit(_solve_scenario_combined, data_base, scen, horizon_years, savings_threshold, extension_data, y1): scen["Scenario"]
+                executor.submit(_solve_scenario_combined, data_base, scen, horizon_years, savings_threshold, extension_data, y1, leasing_tables): scen["Scenario"]
                 for scen in scenarios
             }
             for future in as_completed(futures):

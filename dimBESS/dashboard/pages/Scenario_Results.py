@@ -47,6 +47,11 @@ client_results = all_results[all_results["Client"] == selected_client].sort_valu
 hy, th = st.session_state.get("kpi_params", (dimBESS.DEFAULT_HORIZON_YEARS, 20.0))
 st.caption(f"Cliente: **{selected_client}** · Horizonte: {hy} años · Threshold: {th:.0f}% · resaltado = escenario apto")
 
+if "source_file" in st.session_state:
+    cont_power_by_period = dimBESS.read_cont_power_by_period(st.session_state["source_file"])
+    power_str = " · ".join(f"{period}: {power:.2f} MW" for period, power in cont_power_by_period.items())
+    st.caption(f"Potencia contratada (CUPS): {power_str}")
+
 styled_results = dimBESS.highlight_results(client_results.reset_index(drop=True))
 raw_columns = client_results.columns
 
@@ -60,6 +65,7 @@ column_config = {
     for c in raw_columns if c.startswith("€")
 }
 column_config["% Savings vs Leasing"] = st.column_config.NumberColumn("% Savings vs Leasing", format="%.1f%%")
+column_config["% Savings vs Leasing (25% subsidy)"] = st.column_config.NumberColumn("% Savings vs Leasing (25% subsidy)", format="%.1f%%")
 
 st.dataframe(styled_results, column_config=column_config, hide_index=True, width="stretch")
 
@@ -103,7 +109,9 @@ with col_a:
     st.plotly_chart(fig1, width="stretch")
 
 with col_b:
+    subsidy_threshold_col = f"(>{th:.0f}% subsidy)"
     marker_symbols = ["circle" if apto else "circle-open" for apto in client_results[threshold_col]]
+    marker_symbols_subsidy = ["circle" if apto else "circle-open" for apto in client_results[subsidy_threshold_col]]
 
     fig2 = go.Figure()
     fig2.add_hline(
@@ -112,16 +120,21 @@ with col_b:
         annotation_font=dict(color="grey", size=11),
     )
     fig2.add_trace(go.Scatter(
-        x=x, y=client_results["% Savings vs Leasing"], mode="lines+markers+text",
+        x=x, y=client_results["% Savings vs Leasing"], name="Sin subvención", mode="lines+markers+text",
         line=dict(color=theme.CYAN, width=2),
         marker=dict(size=10, color=theme.CYAN, symbol=marker_symbols, line=dict(width=2, color=theme.CYAN)),
         text=labels, textposition="top center", textfont=dict(size=10, color="grey"),
-        showlegend=False,
+    ))
+    fig2.add_trace(go.Scatter(
+        x=x, y=client_results["% Savings vs Leasing (25% subsidy)"], name="25% subsidy", mode="lines+markers",
+        line=dict(color=theme.ORANGE, width=2),
+        marker=dict(size=10, color=theme.ORANGE, symbol=marker_symbols_subsidy, line=dict(width=2, color=theme.ORANGE)),
     ))
     fig2.update_layout(
         title=dict(text="% Savings vs Leasing", x=0.5, xanchor="center", font=dict(color="grey", size=14)),
         xaxis_title="BESS Capacity (MWh)",
         yaxis_title="% Savings vs Leasing",
+        legend=dict(orientation="h", y=-0.25, x=0.5, xanchor="center"),
         hovermode="x unified",
         margin=dict(t=40, b=10, l=10, r=10),
         height=380,
