@@ -111,7 +111,14 @@ def _build_daily_model(
     model.pot_limit = Constraint(model.T, rule=pot_limit)
 
     def pvch_capacity_rule(m, t):
-        return m.PVch[t] <= soc_max_effective[t] - m.SOC[t]
+        # El hueco disponible se mide contra el SOC ANTERIOR a esta hora, no el de esta
+        # misma hora: m.SOC[t] ya incluye la propia PVch[t] (via soc_rest_rule/soc0), así
+        # que referenciarlo aqui recortaba a la mitad el hueco real disponible para PV
+        # (Gch[t] no tenia esa misma restriccion, asi que en la practica esto forzaba a
+        # cargar desde red -- pagando -- en vez de PV gratis cuando el hueco era pequeño,
+        # p.ej. la ultima hora de carga antes de llenar la bateria).
+        prev_soc = soc_init if t == 0 else m.SOC[t - 1]
+        return m.PVch[t] <= soc_max_effective[t] - prev_soc
 
     model.pvch_capacity = Constraint(model.T, rule=pvch_capacity_rule)
 
@@ -192,24 +199,25 @@ def _solve_lexicographic(model, tee=False):
     _solve(model, tee=tee)
 
 
-def _extract_results(model, demand, pv_prod, eta_dis, pv_price, grid_price, grid_charge_price, penalty):
+def _extract_results(model, demand, pv_prod, eta_dis, pv_price, grid_price, grid_charge_price, grid_charge_price_notolls, penalty):
 
     T = len(demand)
 
     return {
-        "Demanda"           :   demand,
-        "Producción PV"     :   pv_prod,
-        "RTE Efficiency"    :   eta_dis,
-        "Carga de PV"       :   [model.PVch[t]() for t in range(T)],
-        "Carga de red"      :   [model.Gch[t]() for t in range(T)],
-        "Precio Carga PV"   :   pv_price,
-        "Precio Carga Red"  :   grid_charge_price,
-        "Precio Red"        :   grid_price,
-        "SOC"               :   [model.SOC[t]() for t in range(T)],
-        "Descarga"          :   [model.Bdis[t]() for t in range(T)],
-        "Cobertura red"     :   [model.ImportDemand[t]() for t in range(T)],
-        "Excedentes"        :   [model.spill[t]() for t in range(T)],
-        "Penalización"      :   penalty,
+        "Demanda"                       :   demand,
+        "Producción PV"                 :   pv_prod,
+        "RTE Efficiency"                :   eta_dis,
+        "Carga de PV"                   :   [model.PVch[t]() for t in range(T)],
+        "Carga de red"                  :   [model.Gch[t]() for t in range(T)],
+        "Precio Carga PV"               :   pv_price,
+        "Precio Carga Red"              :   grid_charge_price,
+        "Precio Carga Red sin Tolls"    :   grid_charge_price_notolls,
+        "Precio Red"                    :   grid_price,
+        "SOC"                           :   [model.SOC[t]() for t in range(T)],
+        "Descarga"                      :   [model.Bdis[t]() for t in range(T)],
+        "Cobertura red"                 :   [model.ImportDemand[t]() for t in range(T)],
+        "Excedentes"                    :   [model.spill[t]() for t in range(T)],
+        "Penalización"                  :   penalty,
     }
 
 
@@ -228,7 +236,7 @@ def opt_pv_first_daily(data, inputs, spill_mode="lexicographic", tee=False):
 
     HOURS_PER_DAY = 24
     OFFSET = 0
-    E_MAX = inputs["Pot BESS"]*inputs["N containers"]
+    E_MAX = inputs["Pot BESS"]*inputs["N containers"]*inputs["DoD %"]
 
     demand = (data["Power demand kWh"]/1000).tolist()
     pv_prod = (data["PV Generation kWh"]/1000).tolist()
@@ -256,6 +264,10 @@ def opt_pv_first_daily(data, inputs, spill_mode="lexicographic", tee=False):
         grid_charge_price = data["Final Prices"].tolist()
     else:
         raise ValueError(f"tolls desconocido: {tolls}")
+
+    # PRUEBA: € Cost charging from Grid siempre se calcula sin tolls (independiente
+    # del parámetro 'tolls', que sigue rigiendo solo el precio de despacho del MILP).
+    grid_charge_price_notolls = (data["Final Prices"] - data["Tolls and RC"]).tolist()
 
     check = pd.DataFrame({
         "Demand"    :   demand,
@@ -351,6 +363,7 @@ def opt_pv_first_daily(data, inputs, spill_mode="lexicographic", tee=False):
             pv_price[sl],
             grid_price[sl],
             grid_charge_price[sl],
+            grid_charge_price_notolls[sl],
             day_penalty,
         )
         all_results.append(pd.DataFrame(day_result))

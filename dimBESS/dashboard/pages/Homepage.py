@@ -56,6 +56,8 @@ if "scenario_results" not in st.session_state:
     st.session_state["scenario_results"] = {}
 if "kpi_rows" not in st.session_state:
     st.session_state["kpi_rows"] = {}
+if "savings_projections" not in st.session_state:
+    st.session_state["savings_projections"] = {}
 if (
     "scenario_source" not in st.session_state
     or st.session_state["scenario_source"] != source_label
@@ -63,6 +65,7 @@ if (
 ):
     st.session_state["scenario_results"] = {}
     st.session_state["kpi_rows"] = {}
+    st.session_state["savings_projections"] = {}
     st.session_state["scenario_source"] = source_label
     st.session_state["source_file"] = source_file
     st.session_state["data_base"] = dimBESS.load_hourly_data(source_file)
@@ -88,15 +91,18 @@ col_run, col_reset = st.columns([1, 1])
 with col_run:
     if pending_names:
         if st.button(f"Run Scenarios ({len(pending_names)} pendiente(s))"):
+            extra_years = ", ".join(str(y) for y in dimBESS.EXTENDED_STUDY_YEARS if y != 1)
             with st.spinner(
                 f"Resolviendo {len(pending_names)} escenario(s) en paralelo (los marcados como "
-                f"'Extended study' resuelven también año 10 y año 20, ~3x más lento)..."
+                f"'Extended study' resuelven también año {extra_years}, "
+                f"~{len(dimBESS.EXTENDED_STUDY_YEARS)}x más lento)..."
             ):
-                new_scenario_results, new_kpi_rows = dimBESS.solve_and_analyze_scenarios(
+                new_scenario_results, new_kpi_rows, new_savings_projections = dimBESS.solve_and_analyze_scenarios(
                     source_file, only=pending_names, horizon_years=horizon_years, savings_threshold=savings_threshold
                 )
             st.session_state["scenario_results"].update(new_scenario_results)
             st.session_state["kpi_rows"].update(new_kpi_rows)
+            st.session_state["savings_projections"].update(new_savings_projections)
             st.session_state["kpi_params"] = (horizon_years, savings_threshold)
             st.success("Escenario(s) resuelto(s). Resultados y KPIs disponibles en Scenario Results.")
             st.rerun()
@@ -108,6 +114,7 @@ with col_reset:
         if st.button("Recalcular todo (forzar re-solve)"):
             st.session_state["scenario_results"] = {}
             st.session_state["kpi_rows"] = {}
+            st.session_state["savings_projections"] = {}
             st.rerun()
 
 if solved_names:

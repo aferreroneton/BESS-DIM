@@ -2,6 +2,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+import aux_functions
 import dimBESS
 import theme
 
@@ -98,14 +99,14 @@ with col_a:
         text=labels, textposition="top center", textfont=dict(size=10, color="grey"),
     ))
     fig1.update_layout(
-        title=dict(text=f"Leasing vs Savings a {hy} años (€)", x=0.5, xanchor="center", font=dict(color="grey", size=14)),
         xaxis_title="BESS Capacity (MWh)",
         yaxis_title="€",
         legend=dict(orientation="h", y=-0.25, x=0.5, xanchor="center"),
         hovermode="x unified",
-        margin=dict(t=40, b=10, l=10, r=10),
+        margin=dict(t=10, b=10, l=10, r=10),
         height=380,
     )
+    st.markdown(aux_functions.chart_title(f"Leasing vs Savings a {hy} años (€)"), unsafe_allow_html=True)
     st.plotly_chart(fig1, width="stretch")
 
 with col_b:
@@ -131,12 +132,12 @@ with col_b:
         marker=dict(size=10, color=theme.ORANGE, symbol=marker_symbols_subsidy, line=dict(width=2, color=theme.ORANGE)),
     ))
     fig2.update_layout(
-        title=dict(text="% Savings vs Leasing", x=0.5, xanchor="center", font=dict(color="grey", size=14)),
         xaxis_title="BESS Capacity (MWh)",
         yaxis_title="% Savings vs Leasing",
         legend=dict(orientation="h", y=-0.25, x=0.5, xanchor="center"),
         hovermode="x unified",
-        margin=dict(t=40, b=10, l=10, r=10),
+        margin=dict(t=10, b=10, l=10, r=10),
         height=380,
     )
+    st.markdown(aux_functions.chart_title("% Savings vs Leasing"), unsafe_allow_html=True)
     st.plotly_chart(fig2, width="stretch")

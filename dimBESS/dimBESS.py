@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import pv_first_daily
 import best_price_daily
+import pbi_logic_daily
 import aux_functions
 import mwh_extension
 
@@ -66,19 +67,91 @@ SAVINGS_MODEL2_PCT_CHARGE_PV_MAX = 0.65
 
 SAVINGS_MODEL2_VALID_TARIFFS = set(SAVINGS_MODEL2_B_TARIFF.keys())
 
+# Ratio mediano real (SAVINGS año n / SAVINGS año 1) del grupo de referencia (6.1TD +
+# Risen, 19 simulaciones multi-año) del histórico de 58 simulaciones (co_exec) que
+# calibró el modelo de regresión externo -- fuente: "Savings BESS Evo.pbix", tabla
+# simHist. La regresión cuadrática (SAVINGS_MODEL_*) alisaba por completo un patrón real
+# y consistente (100% de las 49 simulaciones multi-año lo muestran): un valle en año 4 y
+# un repunte en año 5-6 antes de retomar la caída, ligado al spread real de precios, no
+# a un artefacto de un cliente concreto. Sustituye a "Intercept + b_year*year +
+# b_year2*year²" como forma base de project_savings(); los ajustes de tarifa/container
+# (y % Charge from PV en el Modelo 2) se mantienen como antes, sumados sobre esta forma.
+SAVINGS_EMPIRICAL_SHAPE_RATIO = {
+    1   :   1.000000,
+    2   :   0.943715,
+    3   :   0.928600,
+    4   :   0.882018,
+    5   :   0.910505,
+    6   :   0.923412,
+    7   :   0.895400,
+    8   :   0.833068,
+    9   :   0.823462,
+    10  :   0.813977,
+    11  :   0.805995,
+    12  :   0.804965,
+    13  :   0.776808,
+    14  :   0.754562,
+    15  :   0.714622,
+    16  :   0.689830,
+    17  :   0.660010,
+    18  :   0.627080,
+    19  :   0.597566,
+    20  :   0.577189,
+}
+
+
+def _empirical_savings_shape_ratio(year):
+    if year in SAVINGS_EMPIRICAL_SHAPE_RATIO:
+        return SAVINGS_EMPIRICAL_SHAPE_RATIO[year]
+
+    last_year = max(SAVINGS_EMPIRICAL_SHAPE_RATIO)
+    slope = SAVINGS_EMPIRICAL_SHAPE_RATIO[last_year] - SAVINGS_EMPIRICAL_SHAPE_RATIO[last_year - 1]
+
+    return SAVINGS_EMPIRICAL_SHAPE_RATIO[last_year] + slope*(year - last_year)
+
+
 DEFAULT_HORIZON_YEARS = 15
 
 # Estrategias de carga soportadas actualmente por el motor de cálculo.
-SUPPORTED_SURPLUS_STRATEGIES = {"PV surplus first", "Best price PV vs Grid"}
+SUPPORTED_SURPLUS_STRATEGIES = {"PV surplus first", "Best price PV vs Grid", "Solve (PBI logic)"}
 
 # "Base study": proyección de savings vía el modelo de regresión externo (58 simulaciones
 # históricas de otra herramienta), dimensionando solo en el año 1 (project_savings).
-# "Extended study": resuelve el MILP en año 1, 10 y 20 para el escenario concreto y ajusta
-# una curva propia (parábola exacta por los 3 puntos) en vez de usar el modelo externo.
+# "Extended study": resuelve el MILP en los años de EXTENDED_STUDY_YEARS para el escenario
+# concreto y ajusta una curva propia (polinomio exacto por esos N puntos) en vez de usar el
+# modelo externo.
+#
+# Antes eran año 1/10/20: el histórico (simHist) y la simulación año-a-año muestran un
+# valle en año 4 y un repunte en año 5-6 antes de que la caída se acelere en año 7-8 -- con
+# 1/10/20 esa dinámica se saltaba por completo (de año 1 se pasaba a año 10).
+#
+# Búsqueda exhaustiva sobre 11 años reales resueltos (escenario Harinera 15,05MWh, ver
+# informe de metodología) entre todas las combinaciones de calibración razonables:
+#   1-10-20 (anterior)      MAE 1,27%  -- se salta el valle/repunte por completo
+#   1-5-8   (3 puntos)      MAE 1,16%  -- mejor en años <=10 (0,74%) pero peor en años >10
+#                                         (2,43%; pierde el ancla de largo plazo)
+#   1-9-20  (mejor de 3)    MAE 0,95%
+#   1-6-9-15 (elegido)      MAE 0,59%  -- año 6 (pico real), año 9 (tras el repunte), año 15
+#                                         (horizonte por defecto de la herramienta, ver
+#                                         DEFAULT_HORIZON_YEARS); extrapola a año 20 con solo
+#                                         -0,45% de error pese a no anclar ahí
+#   1-7-15-20 (mejor de 4)  MAE 0,54%  -- marginalmente mejor pero exige resolver año 20
+#                                         (previsión a más distancia) sin ganancia relevante
+# Anclar exactamente en el pico (probado con año 6 como único punto intermedio, sin año 9)
+# da un ajuste inestable que se dispara en la extrapolación (-31,8% en año 20) -- por eso
+# hace falta un 4º punto que sujete la cola.
 SUPPORTED_STUDY_TYPES = {"Base study", "Extended study"}
-EXTENDED_STUDY_YEARS = (1, 10, 20)
+EXTENDED_STUDY_YEARS = (1, 6, 9, 15)
 
 def project_savings(savings_y1, tariff, container_type, pct_charge_pv=None, years=None):
+    """
+    "Base study": ratio(año) = forma empírica real (SAVINGS_EMPIRICAL_SHAPE_RATIO, grupo
+    de referencia 6.1TD+Risen) + ajuste de tarifa/container (y de % Charge from PV en el
+    Modelo 2), igual que antes. Antes la "forma" era la parábola ajustada por regresión
+    (Intercept + b_year·año + b_year²·año²), que alisaba el valle/repunte real de año
+    4-6; ahora se parte directamente de la mediana histórica real y se le suma el mismo
+    ajuste de tarifa/container ya calibrado (año 1 sigue fijado a 1.0 exacto).
+    """
 
     if years is None:
         years = range(1, DEFAULT_HORIZON_YEARS+1)
@@ -97,7 +170,7 @@ def project_savings(savings_y1, tariff, container_type, pct_charge_pv=None, year
             if year == 1:
                 ratios.append(1.0)
                 continue
-            ratio = (SAVINGS_MODEL2_INTERCEPT + SAVINGS_MODEL2_B_YEAR*year + SAVINGS_MODEL2_B_YEAR2*year**2 + b_tariff*year + b_container*year + SAVINGS_MODEL2_B_PCT_CHARGE_PV*pct_charge_pv*year)
+            ratio = (_empirical_savings_shape_ratio(year) + b_tariff*year + b_container*year + SAVINGS_MODEL2_B_PCT_CHARGE_PV*pct_charge_pv*year)
             ratios.append(ratio)
     else:
         b_tariff = SAVINGS_MODEL_B_TARIFF.get(tariff, 0.0)
@@ -106,32 +179,87 @@ def project_savings(savings_y1, tariff, container_type, pct_charge_pv=None, year
             if year == 1:
                 ratios.append(1.0)
                 continue
-            ratio = (SAVINGS_MODEL_INTERCEPT + SAVINGS_MODEL_B_YEAR*year + SAVINGS_MODEL_B_YEAR2*year**2 + b_tariff*year + b_container*year)
+            ratio = (_empirical_savings_shape_ratio(year) + b_tariff*year + b_container*year)
             ratios.append(ratio)
 
     return pd.Series(np.array(ratios)*savings_y1, index=years_list, name="SAVINGS_estimado")
 
 
-def project_savings_extended(savings_y1, savings_y10, savings_y20, years=None):
+def _annual_degradation_factors(provider, extension_data, years):
+    """BESS Degradation por año de operación (directo de la curva del fabricante, sin
+    interpolar dentro del año -- aquí basta una cifra por año)."""
+
+    curves = extension_data["curves_risen"] if provider == "Risen" else extension_data["curves_solax"]
+    deg_lookup = curves.set_index("Operation year")["BESS Degradation"].to_dict()
+
+    return {year: deg_lookup.get(year, np.nan) for year in years}
+
+
+def _annual_price_spread(extension_data, y1, years):
     """
-    Contraparte de project_savings() para "Extended study": en vez de aplicar el modelo de
-    regresión calibrado externamente sobre 58 simulaciones históricas, ajusta una parábola
-    exacta (2º grado, 3 puntos -> 3 incógnitas) por los ratios simulados en año 1/10/20 del
-    propio escenario, y la extrapola al resto de años del horizonte.
+    Spread diario medio (máximo - mínimo de 'Final Prices' cada día, promediado en el
+    año natural correspondiente) para cada año de operación, a partir del forecast de
+    precios real (Aurora) ya cargado en extension_data -- sin resolver el MILP.
+    """
+
+    prices = extension_data["prices"][["Date&Time", "Final Prices"]].copy()
+    prices["Date&Time"] = pd.to_datetime(prices["Date&Time"])
+    prices["Calendar Year"] = prices["Date&Time"].dt.year
+    prices["Date"] = prices["Date&Time"].dt.date
+
+    daily = prices.groupby(["Calendar Year", "Date"])["Final Prices"].agg(["max", "min"])
+    daily_spread_by_calendar_year = (daily["max"] - daily["min"]).groupby("Calendar Year").mean()
+
+    return {year: daily_spread_by_calendar_year.get(y1 + (year - 1), np.nan) for year in years}
+
+
+def project_savings_extended(savings_y1, savings_by_calib_year, provider, extension_data, y1, years=None):
+    """
+    Contraparte de project_savings() para "Extended study". El spread diario real de
+    precios (Aurora) combinado con la degradación de batería ("raw_shape") ya reproduce
+    bastante bien el valle de año 4 y el repunte de año 5-6 vistos tanto en el histórico
+    (simHist) como en la simulación año-a-año real -- pero un polinomio puro por puntos muy
+    separados (año 1/10/20, versión original) se saltaba esa dinámica por completo. En su
+    lugar:
+
+    1) raw_shape(año) = degradación_batería(año) x spread_diario_real(año), normalizado
+       a año 1 -- perfil "físico" año a año con la forma real del mercado.
+    2) corrección(año): polinomio de grado len(EXTENDED_STUDY_YEARS)-1 por los puntos de
+       EXTENDED_STUDY_YEARS tal que raw_shape, multiplicado por ella, reproduzca EXACTAMENTE
+       los ratios realmente simulados en esos años (año 1 -> 1.0 por construcción).
+    3) ratio final(año) = raw_shape(año) x corrección(año): calibrado con los puntos
+       simulados, pero con la forma entre/más allá de ellos gobernada por el spread real.
+
+    savings_by_calib_year: dict {año: savings_del_MILP} para cada año de
+    EXTENDED_STUDY_YEARS distinto de 1 (p.ej. {6: savings_y6, 9: savings_y9, 15: savings_y15}).
+
+    Número de puntos de calibración (ver informe de metodología para la búsqueda completa):
+    más puntos = mejor ajuste pero más resoluciones del MILP por escenario ("Extended
+    study" tarda ~len(EXTENDED_STUDY_YEARS)x lo que "Base study"). Anclar justo en un pico
+    real (año 6) con solo 2 puntos más es inestable en la extrapolación -- hace falta un
+    punto adicional que sujete la cola (por eso son 4 puntos y no 3).
     """
 
     if years is None:
         years = range(1, DEFAULT_HORIZON_YEARS+1)
 
     years_list = list(years)
+    all_years = sorted(set(years_list) | set(EXTENDED_STUDY_YEARS))
 
-    ratio_10 = savings_y10/savings_y1 if savings_y1 else 0.0
-    ratio_20 = savings_y20/savings_y1 if savings_y1 else 0.0
+    deg = _annual_degradation_factors(provider, extension_data, all_years)
+    spread = _annual_price_spread(extension_data, y1, all_years)
+    raw = {year: deg[year]*spread[year] for year in all_years}
+    raw_ratio = {year: raw[year]/raw[1] for year in all_years}
 
-    coeffs = np.polyfit(EXTENDED_STUDY_YEARS, [1.0, ratio_10, ratio_20], 2)
-    poly = np.poly1d(coeffs)
+    true_ratio = {1: 1.0}
+    for year, savings_year in savings_by_calib_year.items():
+        true_ratio[year] = savings_year/savings_y1 if savings_y1 else 0.0
 
-    ratios = np.array([poly(year) for year in years_list])
+    correction_points = [true_ratio[y]/raw_ratio[y] for y in EXTENDED_STUDY_YEARS]
+    coeffs = np.polyfit(EXTENDED_STUDY_YEARS, correction_points, len(EXTENDED_STUDY_YEARS)-1)
+    correction_poly = np.poly1d(coeffs)
+
+    ratios = np.array([raw_ratio[year]*correction_poly(year) for year in years_list])
 
     return pd.Series(ratios*savings_y1, index=years_list, name="SAVINGS_estimado")
 
@@ -320,12 +448,30 @@ def load_scenarios(file, sheet_name="Scenarios"):
             )
 
         ppa_imp = float(row["PV PPA Price for charging €/MWh"]) - float(row["Original PPA price €/MWh"])
+
+        # "Tolls" en el Excel es un Sí/No: Sí -> 1, No -> 0. Si la columna no existe
+        # (Excel de escenarios aún no actualizado) o está vacía, por defecto 1 (con tolls,
+        # el comportamiento de siempre).
+        tolls_raw = row.get("Tolls")
+        if "Tolls" not in row or pd.isna(tolls_raw):
+            tolls = 1
+        else:
+            tolls = 1 if str(tolls_raw).strip().lower() in ("si", "sí", "s", "yes", "1") else 0
+
+        # DoD% (Depth of Discharge): fracción de la capacidad nominal realmente
+        # utilizable (Solax Trene 0.95, Risen+mg 1.00 -- ver scenario_builder.py). Si el
+        # Excel de escenarios no trae la columna (versión antigua), por defecto 1.0 --
+        # el comportamiento previo a este fix, sin recortar la capacidad nominal.
+        dod_raw = row.get("Depth of Discharge (DoD) %")
+        dod = float(dod_raw) if "Depth of Discharge (DoD) %" in row and pd.notna(dod_raw) else 1.0
+
         scenarios.append({
             "Scenario"          :   row["Scenario"],
             "Container Type"    :   container_type,
             "Provider"          :   provider,
             "Nominal Capacity"  :   float(row["Nominal Capacity"]),
             "N Containers"      :   float(row["N containers"]),
+            "DoD %"             :   dod,
             "C-Factor"          :   float(row["C-Factor"]),
             "Tariff"            :   tariff,
             "PPA Mode"          :   row["Price mode from PV surplus"],
@@ -334,7 +480,7 @@ def load_scenarios(file, sheet_name="Scenarios"):
             "PPA Improvement"   :   ppa_imp,
             "Discharge Cost"    :   float(row["Discharge Cost"]) if "Discharge Cost" in row and pd.notna(row.get("Discharge Cost")) else 0.0,
             "Cycles/Day"        :   float(row["Cycles/day"]),
-            "tolls"             :   0, #-----------------------------------------------------------------------------------------TO-DO (WIP)
+            "tolls"             :   tolls,
             "€ Leasing Monthly" :   float(row["€ Leasing Monthly"]),
             "Study Type"        :   study_type,
             "Client Rating"     :   int(row["Client Rating"]),
@@ -394,6 +540,7 @@ def solve_scenario(data_base, scenario):
     inputs = {
         "Pot BESS"          :   scenario["Nominal Capacity"],
         "N containers"      :   scenario["N Containers"],
+        "DoD %"             :   scenario["DoD %"],
         "C-factor"          :   scenario["C-Factor"],
         "TARIFF"            :   scenario["Tariff"],
         "PPA Mode"          :   scenario["PPA Mode"],
@@ -415,6 +562,8 @@ def solve_scenario(data_base, scenario):
         model, results = pv_first_daily.opt_pv_first_daily(data, inputs)
     elif scenario["Surplus Strategy"] == "Best price PV vs Grid":
         model, results = best_price_daily.opt_best_price_daily(data, inputs)
+    elif scenario["Surplus Strategy"] == "Solve (PBI logic)":
+        model, results = pbi_logic_daily.opt_pbi_logic_daily(data, inputs)
     else:
         raise NotImplementedError(
             f"Scenario '{scenario["Scenario"]}': Surplus Strategy='{scenario["Surplus Strategy"]}' can't be run"
@@ -440,8 +589,14 @@ def kpi_row_from_results(data_base, scenario, results, inputs, horizon_years, sa
     como una resolución interactiva suelta (Scenario Builder) puedan reutilizar el mismo
     resultado de año 1 sin resolver el MILP dos veces.
 
-    Para "Extended study" sí resuelve el MILP dos veces más (año 10 y año 20 proyectados
-    vía mwh_extension), porque esos años no se calculan en ningún otro sitio.
+    Para "Extended study" sí resuelve el MILP una vez más por cada año de
+    EXTENDED_STUDY_YEARS distinto de 1 (proyectados vía mwh_extension), porque esos años no
+    se calculan en ningún otro sitio.
+
+    Devuelve (kpi_row, savings_by_year): kpi_row es el dict con los KPIs agregados (para
+    Scenario Results, con "€ Total Savings" incluyendo BESS + mejora PPA); savings_by_year
+    es la serie año a año (no acumulada) de savings de BESS a lo largo del horizonte,
+    SIN mejora PPA, para la página "Savings Projection" (comparable frente al histórico/PBI).
     """
 
     data = data_base.copy()
@@ -470,24 +625,38 @@ def kpi_row_from_results(data_base, scenario, results, inputs, horizon_years, sa
     perc_surplus_to_BESS = (mwh_charge_pv/(mwh_surplus_pv.sum()))*100
     perc_pv_ac_bess = ((data["AC kWh"].sum()/1000 + mwh_charge_pv)/(data["PV Generation kWh"].sum()/1000) - (data["AC kWh"].sum()/1000)/(data["PV Generation kWh"].sum()/1000))*100
 
-    savings_y10 = np.nan
-    savings_y20 = np.nan
+    calib_years = [y for y in EXTENDED_STUDY_YEARS if y != 1]
+    savings_by_calib_year = {y: np.nan for y in calib_years}
     if study_type == "Extended study":
         if extension_data is None or y1 is None:
             raise ValueError(
                 f"Scenario '{scenario["Scenario"]}': Study Type='Extended study' requiere "
                 f"extension_data/y1 (ver load_extension_data / sweep_bess_sizes)."
             )
-        data_by_year = project_year_data(data_base, extension_data, y1, years=[10, 20])
-        savings_y10 = _solve_scenario_year_savings(data_by_year[10], scenario)
-        savings_y20 = _solve_scenario_year_savings(data_by_year[20], scenario)
+        data_by_year = project_year_data(data_base, extension_data, y1, years=calib_years)
+        savings_by_calib_year = {y: _solve_scenario_year_savings(data_by_year[y], scenario) for y in calib_years}
 
-        proyeccion = project_savings_extended(savings_y1=savings_y1, savings_y10=savings_y10, savings_y20=savings_y20, years=range(1, horizon_years+1))
+        proyeccion = project_savings_extended(
+            savings_y1=savings_y1, savings_by_calib_year=savings_by_calib_year,
+            provider=scenario["Provider"], extension_data=extension_data, y1=y1,
+            years=range(1, horizon_years+1),
+        )
     else:
         proyeccion = project_savings(savings_y1=savings_y1, tariff=inputs["TARIFF"], container_type=container_type, pct_charge_pv=pct_charge_pv, years=range(1, horizon_years+1),)
 
     savings_bess_n_years = proyeccion.sum()
     savings_total_n_years = savings_bess_n_years + savings_ppa_n_years
+
+    # Curva año a año (no acumulada) de savings de BESS a lo largo de la vida del
+    # proyecto (año 1 para Base study; años de EXTENDED_STUDY_YEARS simulados + polinomio
+    # para Extended study, vía 'proyeccion'). Solo BESS, sin mejora PPA: la forma/ratio de
+    # 'proyeccion' está calibrada sobre savings de BESS puros (histórico simHist / años de
+    # EXTENDED_STUDY_YEARS del
+    # propio MILP), no sobre savings+PPA, así que sumarle la mejora PPA aquí distorsionaría
+    # la curva -- y además dejaría de ser comparable frente al histórico/PBI, que es la
+    # razón de ser de esta proyección. Se usa en la página "Savings Projection".
+    savings_by_year = proyeccion.copy()
+    savings_by_year.name = "SAVINGS_BESS"
 
     annual_leasing_cost = scenario["€ Leasing Monthly"]*n_containers*12
     if horizon_years > 15:
@@ -514,7 +683,7 @@ def kpi_row_from_results(data_base, scenario, results, inputs, horizon_years, sa
 
     apto_subsidy = savings_pct_subsidy > savings_threshold if not np.isnan(savings_pct_subsidy) else np.nan
 
-    return {
+    kpi_row = {
         "Scenario"                                          :   scenario["Scenario"],
         "Client"                                            :   client_from_scenario_name(scenario["Scenario"]),
         "Study Type"                                        :   study_type,
@@ -529,8 +698,7 @@ def kpi_row_from_results(data_base, scenario, results, inputs, horizon_years, sa
         "€ Savings from PPA improvement"                    :   savings_ppa_annual,
         f"€ Savings from PPA improvement {horizon_years}y"  :   savings_ppa_n_years,
         "€ Savings BESS y1"                                 :   savings_y1,
-        "€ Savings BESS y10 (simulado)"                     :   savings_y10,
-        "€ Savings BESS y20 (simulado)"                     :   savings_y20,
+        **{f"€ Savings BESS y{y} (simulado)": savings_by_calib_year[y] for y in calib_years},
         f"€ Savings from BESS {horizon_years}y"             :   savings_bess_n_years,
         "€ Total Savings y1"                                :   savings_y1 + savings_ppa_annual,
         f"€ Total Savings {horizon_years}y"                 :   savings_total_n_years,
@@ -543,7 +711,9 @@ def kpi_row_from_results(data_base, scenario, results, inputs, horizon_years, sa
         "% Savings vs Leasing (25% subsidy)"                :   savings_pct_subsidy,
         "(>%.0f%% subsidy)" % savings_threshold             :   apto_subsidy,
     }
-    
+
+    return kpi_row, savings_by_year
+
 
 def _solve_scenario_combined(data_base, scenario, horizon_years, savings_threshold, extension_data=None, y1=None, leasing_tables=None):
     """
@@ -556,9 +726,9 @@ def _solve_scenario_combined(data_base, scenario, horizon_years, savings_thresho
           f"= {scenario["Nominal Capacity"]*scenario["N Containers"]:.3f} MWh ({scenario.get("Study Type", "Base study")})")
 
     model, results, inputs = solve_scenario(data_base, scenario)
-    kpi_row = kpi_row_from_results(data_base, scenario, results, inputs, horizon_years, savings_threshold, extension_data, y1, leasing_tables)
+    kpi_row, savings_by_year = kpi_row_from_results(data_base, scenario, results, inputs, horizon_years, savings_threshold, extension_data, y1, leasing_tables)
 
-    return scenario["Scenario"], results, inputs, scenario, kpi_row
+    return scenario["Scenario"], results, inputs, scenario, kpi_row, savings_by_year
 
 
 def solve_and_analyze_scenarios(
@@ -576,6 +746,8 @@ def solve_and_analyze_scenarios(
         de visualización (año 1).
       - kpi_rows: {name: dict}, con los KPIs/proyección de ahorro (para Scenario Results,
         vía build_results_table).
+      - savings_projections: {name: pd.Series}, la curva año a año de savings de BESS
+        estimados, sin mejora PPA (para la página "Savings Projection").
 
     Pensado para el botón único "Run Scenarios" del dashboard: antes había un solve por
     separado para visualización (solve_all_scenarios) y otro para el sweep de KPIs
@@ -609,10 +781,11 @@ def solve_and_analyze_scenarios(
             for future in as_completed(futures):
                 raw.append(future.result())
 
-    scenario_results = {name: {"results": results, "inputs": inputs, "scenario": scenario} for name, results, inputs, scenario, kpi_row in raw}
-    kpi_rows = {name: kpi_row for name, results, inputs, scenario, kpi_row in raw}
+    scenario_results = {name: {"results": results, "inputs": inputs, "scenario": scenario} for name, results, inputs, scenario, kpi_row, savings_by_year in raw}
+    kpi_rows = {name: kpi_row for name, results, inputs, scenario, kpi_row, savings_by_year in raw}
+    savings_projections = {name: savings_by_year for name, results, inputs, scenario, kpi_row, savings_by_year in raw}
 
-    return scenario_results, kpi_rows
+    return scenario_results, kpi_rows, savings_projections
 
 
 def client_from_scenario_name(name):
@@ -649,7 +822,7 @@ def sweep_bess_sizes(
     directamente la tabla estilizada. El dashboard usa solve_and_analyze_scenarios +
     build_results_table por separado, para no resolver el año 1 dos veces."""
 
-    _, kpi_rows = solve_and_analyze_scenarios(
+    _, kpi_rows, _ = solve_and_analyze_scenarios(
         file, n_workers=n_workers, parallel=parallel, horizon_years=horizon_years, savings_threshold=savings_threshold
     )
     return build_results_table(kpi_rows)

@@ -21,7 +21,7 @@ def calculate_table(results, ppa_price, inputs):
     cost_grid_1 = float((results_aux["Demanda tras PV"]*results_aux["Precio Red"]).sum())
     cost_grid_2 = float((results_aux["Cobertura red"]*results_aux["Precio Red"]).sum())
     cost_charge_pv = float((results_aux["Carga de PV"]*results_aux["Precio Carga PV"]).sum())
-    cost_charge_grid = float((results_aux["Carga de red"]*results_aux["Precio Carga Red"]).sum())
+    cost_charge_grid = float((results_aux["Carga de red"]*results_aux["Precio Carga Red sin Tolls"]).sum())
     cost_charge = cost_charge_pv+cost_charge_grid
     bess_replaced = float((results_aux["Descarga"]*results_aux["Precio Red"]).sum())
     replaced_price = dividir(bess_replaced,mwh_discharge)
@@ -41,7 +41,7 @@ def calculate_table(results, ppa_price, inputs):
     eur_charge_grid = dividir(cost_charge_grid,mwh_charge_grid)
     eur_discharge = dividir(cost_charge,mwh_discharge)
     eur_charge = dividir(cost_charge,(mwh_charge_grid+mwh_charge_pv))
-    kpi_bess_ut = dividir((mwh_charge_grid+mwh_charge_pv),(inputs["N containers"]*inputs["Pot BESS"]*inputs["Cycles/Day"]*(results["BESS Degradation factor"].sum())/24))*100
+    kpi_bess_ut = dividir((mwh_charge_grid+mwh_charge_pv),(inputs["N containers"]*inputs["Pot BESS"]*inputs["DoD %"]*inputs["Cycles/Day"]*(results["BESS Degradation factor"].sum())/24))*100
     max_spread = (results_aux.groupby(results_aux["Date"].dt.date)["Precio Red"].agg(lambda x: x.max() - x.min()).mean())
     kpi_cap_spread = dividir(spread,max_spread)*100
 
@@ -118,18 +118,42 @@ def calculate_table(results, ppa_price, inputs):
     return(calc_data)
 
 
+def chart_title(text, bg_color=None, size_max=14):
+    """
+    Título para cualquier gráfico Plotly (gauge, pie, etc.), como HTML normal en vez del
+    title= interno de Plotly: ese es texto SVG de ancho fijo que no envuelve, así que en
+    una columna estrecha un título largo ("Demand Cover by Source (%)") se recorta por
+    ambos lados en vez de saltar de línea. Va justo encima del gráfico (que se crea sin
+    su propio title=).
+    """
+
+    bg_style = f"background-color:{bg_color}; padding:4px 0;" if bg_color else ""
+
+    return f"""
+    <div style="{bg_style} text-align:center; font-size:clamp(10px, 1.1vw, {size_max}px); font-weight:600; color:grey; overflow-wrap:break-word;">
+        {text}
+    </div>
+    """
+
+
+def gauge_title(text):
+    return chart_title(text)
+
+
 def metric_cell(value, label, decimals=2, bg_color=None, suffix=""):
     if value is None:
         return "&nbsp;"
 
     bg_style = f"background-color:{bg_color}; padding:6px; border-radius:6px;" if bg_color else ""
 
+    # clamp() en vez de px fijos: mismo tamaño máximo de siempre en pantallas anchas,
+    # pero encoge en vez de desbordar cuando la columna que lo contiene es estrecha.
     return f"""
-    <div style="{bg_style} line-height:1.25;">
-        <div style="font-size:16px; font-weight:600;">
+    <div style="{bg_style} line-height:1.25; min-width:0;">
+        <div style="font-size:clamp(10px, 1.3vw, 16px); font-weight:600; overflow-wrap:break-word;">
             {value:,.{decimals}f}{suffix}
         </div>
-        <div style="font-size:12px; color:gray;">
+        <div style="font-size:clamp(8px, 0.85vw, 12px); color:gray; overflow-wrap:break-word;">
             {label}
         </div>
     </div>
@@ -191,7 +215,7 @@ def freq_kpis(results, inputs, freq):
     bess_replaced.index = results_aux["Date"]
     bess_replaced = bess_replaced.resample(freq).sum()
     cost_charge_pv = results_aux["Carga de PV"]*results_aux["Precio Carga PV"]
-    cost_charge_grid = results_aux["Carga de red"]*results_aux["Precio Carga Red"]
+    cost_charge_grid = results_aux["Carga de red"]*results_aux["Precio Carga Red sin Tolls"]
     cost_charge = cost_charge_pv+cost_charge_grid
     cost_charge.index = results_aux["Date"]
     cost_charge = cost_charge.resample(freq).sum()
@@ -210,7 +234,7 @@ def freq_kpis(results, inputs, freq):
     deg = results["BESS Degradation factor"]
     deg.index = results["Date"]
     deg = deg.resample(freq).mean()
-    kpi_bess_ut = ((mwh_charge)/(inputs["N containers"]*inputs["Pot BESS"]*inputs["Cycles/Day"]*deg*days))*100
+    kpi_bess_ut = ((mwh_charge)/(inputs["N containers"]*inputs["Pot BESS"]*inputs["DoD %"]*inputs["Cycles/Day"]*deg*days))*100
     cycles = days*kpi_bess_ut/100
 
     charging_hours = results_aux["Hora Carga"]

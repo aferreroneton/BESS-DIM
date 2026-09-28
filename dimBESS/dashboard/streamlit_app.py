@@ -41,6 +41,20 @@ st.markdown(
     [data-testid="stSidebar"] [data-baseweb="popover"] * {
         color: #2E2C67 !important;
     }
+    /* Páginas tipo Overview/Performance meten muchas st.columns estrechas con números
+       y etiquetas largas (ej. "KPI BESS Utilization (Cycles/Day)", "3.792.107,18").
+       Por defecto un hijo flex no encoge por debajo del ancho de su contenido
+       (min-width:auto), así que en pantallas más estrechas esas columnas empujaban el
+       resto fuera de la vista (el pie chart y las columnas de la derecha quedaban
+       cortados) en vez de reajustarse. Se fuerza min-width:0 para que sí encojan, y que
+       el texto salte de línea en vez de desbordar. */
+    [data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+        min-width: 0 !important;
+    }
+    [data-testid="stHorizontalBlock"] > div[data-testid="column"] * {
+        overflow-wrap: break-word;
+        word-break: break-word;
+    }
     </style>
     """,
     unsafe_allow_html=True
@@ -70,6 +84,12 @@ page_results = st.Page(
     icon=":material/fact_check:"
 )
 
+page_projection = st.Page(
+    page="pages/Savings_Projection.py",
+    title="Savings Projection",
+    icon=":material/timeline:"
+)
+
 page1 = st.Page(
     page="pages/Overview.py",
     title="Scenario Overview",
@@ -96,7 +116,7 @@ page4 = st.Page(
 
 #----------------------------------------NAVIGATION SETUP----------------------------------------
 
-pg = st.navigation(pages=[home_page, page0, page_results, page1, page2, page3, page4])
+pg = st.navigation(pages=[home_page, page0, page_results, page_projection, page1, page2, page3, page4])
 
 #----------------------------------------RUN SETUP----------------------------------------
 

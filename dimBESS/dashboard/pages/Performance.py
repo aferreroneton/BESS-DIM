@@ -49,11 +49,15 @@ with table_col:
 
     kpi_capt_spread = calc_data["KPI Captured Spread"]
 
+    # El title= de un Indicator de Plotly no hace salto de línea (es texto SVG de ancho
+    # fijo): en una columna estrecha, títulos largos como "KPI BESS Utilization
+    # (Cycles/Day)" se recortaban en vez de envolver. Se saca como texto HTML normal
+    # (sí envuelve) y se deja el Indicator sin title.
+    st.markdown(aux_functions.gauge_title("KPI Captured Spread"), unsafe_allow_html=True)
     fig_1 = go.Figure(go.Indicator(
         mode="gauge+number",
         value=kpi_capt_spread,
         number={"suffix": "%"},
-        title="KPI Captured Spread",
         gauge={
             "axis": {"range": [0, 100]},
             "bar": {"color": theme.CHART_NAVY},
@@ -61,7 +65,7 @@ with table_col:
         }
     ))
 
-    fig_1.update_layout(height=250, margin={'t': 30, 'b': 0, 'l': 20, 'r': 30})
+    fig_1.update_layout(height=220, margin={'t': 10, 'b': 0, 'l': 20, 'r': 30})
     st.plotly_chart(fig_1, use_container_width=True)
 
     r1c1 = st.columns(1)
@@ -77,11 +81,11 @@ with table_col:
 
     kpi_best_ut = calc_data["KPI BESS Utilization (Cycles/Day)"]
 
+    st.markdown(aux_functions.gauge_title("KPI BESS Utilization (Cycles/Day)"), unsafe_allow_html=True)
     fig_2 = go.Figure(go.Indicator(
         mode="gauge+number",
         value=kpi_best_ut,
         number={"suffix": "%"},
-        title="KPI BESS Utilization (Cycles/Day)",
         gauge={
             "axis": {"range": [0, 100]},
             "bar": {"color": theme.CHART_NAVY},
@@ -89,7 +93,7 @@ with table_col:
         }
     ))
 
-    fig_2.update_layout(height=250, margin={'t': 30, 'b': 0, 'l': 20, 'r': 30})
+    fig_2.update_layout(height=220, margin={'t': 10, 'b': 0, 'l': 20, 'r': 30})
     st.plotly_chart(fig_2, use_container_width=True)
 
     r4c1 = st.columns(1)
@@ -102,11 +106,11 @@ with table_col:
 
     kpi_charging_opt = calc_data["KPI Charging Optimization"]
 
+    st.markdown(aux_functions.gauge_title("KPI Charging Optimization"), unsafe_allow_html=True)
     fig_3 = go.Figure(go.Indicator(
         mode="gauge+number",
         value=kpi_charging_opt,
         number={"suffix": "%"},
-        title="KPI Charging Optimization",
         gauge={
             "axis": {"range": [0, 100]},
             "bar": {"color": theme.CHART_NAVY},
@@ -114,7 +118,7 @@ with table_col:
         }
     ))
 
-    fig_3.update_layout(height=250, margin={'t': 30, 'b': 0, 'l': 20, 'r': 30})
+    fig_3.update_layout(height=220, margin={'t': 10, 'b': 0, 'l': 20, 'r': 30})
     st.plotly_chart(fig_3, use_container_width=True)
 
     r6c1 = st.columns(1)
@@ -187,11 +191,15 @@ with chart_col:
         )
     )
 
+    # Antes: leyenda vertical fuera del área del gráfico (x=1.07) sujeta con un margen
+    # derecho fijo en píxeles -- al escalar use_container_width en una columna estrecha,
+    # esa posición/margen absolutos no escalan y la leyenda puede quedar recortada por el
+    # borde del SVG. Horizontal debajo (igual que ya se hace en Overview.py) sí escala.
     fig_4.update_layout(
         barmode="group",
-        height=350,
-        legend=dict(orientation="v", x=1.07, y=0.5, xanchor="left", yanchor="top"),
-        margin=dict(r=120)
+        height=380,
+        legend=dict(orientation="h", y=-0.2, x=0.5, xanchor="center", font=dict(size=10)),
+        margin=dict(r=20)
     )
 
     st.plotly_chart(fig_4, use_container_width=True)
@@ -237,11 +245,11 @@ with chart_col:
 
     fig_5.update_layout(
         barmode="group",
-        height=350,
+        height=380,
         yaxis=dict(),
         yaxis2=dict(overlaying="y", side="right"),
-        legend=dict(orientation="v", x=1.07, y=0.5, xanchor="left", yanchor="top"),
-        margin=dict(r=140)
+        legend=dict(orientation="h", y=-0.2, x=0.5, xanchor="center", font=dict(size=10)),
+        margin=dict(r=40)
     )
 
     for xi, yi in zip(calc_data_freq.index, calc_data_freq["KPI BESS Utilization (Cycles/Day)"]):
@@ -294,11 +302,11 @@ with chart_col:
 
     fig_6.update_layout(
         barmode="group",
-        height=350,
+        height=380,
         yaxis=dict(),
         yaxis2=dict(overlaying="y", side="right"),
-        legend=dict(orientation="v", x=1.07, y=0.5, xanchor="left", yanchor="top"),
-        margin=dict(r=140)
+        legend=dict(orientation="h", y=-0.2, x=0.5, xanchor="center", font=dict(size=10)),
+        margin=dict(r=40)
     )
 
     for xi, yi in zip(calc_data_freq.index, calc_data_freq["KPI Charging Optimization"]):

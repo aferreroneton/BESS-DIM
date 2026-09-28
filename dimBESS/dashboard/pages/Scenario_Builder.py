@@ -23,6 +23,8 @@ if "scenario_results" not in st.session_state:
     st.session_state["scenario_results"] = {}
 if "kpi_rows" not in st.session_state:
     st.session_state["kpi_rows"] = {}
+if "savings_projections" not in st.session_state:
+    st.session_state["savings_projections"] = {}
 
 col_form, col_preview = st.columns([2, 1])
 
@@ -55,10 +57,12 @@ with col_form:
 
     discharge_cost = st.number_input("Discharge Cost (opcional)", min_value=0.0, value=0.0, step=0.1)
 
+    _extra_years_help = ", ".join(str(y) for y in dimBESS.EXTENDED_STUDY_YEARS if y != 1)
     study_type = st.selectbox(
         "Study Type", sorted(dimBESS.SUPPORTED_STUDY_TYPES),
-        help="Extended study resuelve también año 10 y año 20 (proyectados) para una curva de "
-             "ahorro propia del escenario, en vez del modelo de regresión externo. ~3x más lento."
+        help=f"Extended study resuelve también año {_extra_years_help} (proyectados) para una "
+             f"curva de ahorro propia del escenario, en vez del modelo de regresión externo. "
+             f"~{len(dimBESS.EXTENDED_STUDY_YEARS)}x más lento."
     )
 
 with col_preview:
@@ -104,7 +108,11 @@ if st.button("Resolver y añadir al dashboard"):
     y1 = None
     spinner_msg = f"Resolviendo '{scenario['Scenario']}'..."
     if study_type == "Extended study":
-        spinner_msg = f"Resolviendo '{scenario['Scenario']}' (Extended study: año 1, 10 y 20, ~3x más lento)..."
+        _years_msg = ", ".join(str(y) for y in dimBESS.EXTENDED_STUDY_YEARS)
+        spinner_msg = (
+            f"Resolviendo '{scenario['Scenario']}' (Extended study: año {_years_msg}, "
+            f"~{len(dimBESS.EXTENDED_STUDY_YEARS)}x más lento)..."
+        )
 
     with st.spinner(spinner_msg):
         if study_type == "Extended study":
@@ -122,7 +130,7 @@ if st.button("Resolver y añadir al dashboard"):
         leasing_tables = st.session_state["leasing_tables"]
 
         model, results, inputs = dimBESS.solve_scenario(st.session_state["data_base"], scenario)
-        kpi_row = dimBESS.kpi_row_from_results(
+        kpi_row, savings_by_year = dimBESS.kpi_row_from_results(
             st.session_state["data_base"], scenario, results, inputs,
             horizon_years, savings_threshold, extension_data, y1, leasing_tables
         )
@@ -133,6 +141,7 @@ if st.button("Resolver y añadir al dashboard"):
         "scenario": scenario,
     }
     st.session_state["kpi_rows"][scenario["Scenario"]] = kpi_row
+    st.session_state["savings_projections"][scenario["Scenario"]] = savings_by_year
     st.session_state["kpi_params"] = (horizon_years, savings_threshold)
     st.session_state["selected_scenario"] = scenario["Scenario"]
     st.success(f"Escenario '{scenario['Scenario']}' resuelto y añadido (visualización + Scenario Results).")

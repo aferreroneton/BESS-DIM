@@ -73,6 +73,12 @@ with table_col:
     r3c5.markdown(aux_functions.metric_cell(calc_data["% Charge from PV"], "% Charge from PV", suffix=" %", bg_color=theme.CORAL_TINT), unsafe_allow_html=True)
 
 with chart_col:
+    # El title= interno de Plotly es texto SVG de ancho fijo que no envuelve: en una
+    # columna estrecha un título largo se recorta por ambos lados en vez de saltar de
+    # línea (visto en pantallas más pequeñas/zoom alto). Se saca como HTML normal encima
+    # del gráfico, con el mismo fondo coral para que siga leyéndose como un solo bloque.
+    st.markdown(aux_functions.chart_title("Charging Source Mix (%)", bg_color=theme.CORAL_TINT), unsafe_allow_html=True)
+
     fig = px.pie(
         names=["Grid", "PV"],
         values=[
@@ -85,13 +91,6 @@ with chart_col:
     fig.update_traces(marker=dict(colors=[theme.CHART_NAVY, theme.CYAN]))
 
     fig.update_layout(
-        title=dict(
-            text="Charging Source Mix (%)",
-            x=0.5,
-            xanchor='center',
-            yanchor='top',
-            font=dict(color='grey', size=14)
-        ),
         legend=dict(
             orientation="h",
             y=-0.2,
@@ -99,8 +98,8 @@ with chart_col:
             xanchor='center',
             font=dict(size=10)
         ),
-        height=165,
-        margin=dict(t=40, b=40, l=0, r=0),
+        height=150,
+        margin=dict(t=10, b=40, l=0, r=0),
         paper_bgcolor=theme.CORAL_TINT,
         plot_bgcolor=theme.CORAL_TINT
     )
@@ -217,6 +216,8 @@ with table_col_2:
     r14c5.markdown(aux_functions.metric_cell(calc_data["€ Savings from BESS"], "€ Savings from BESS", bg_color=theme.CORAL_TINT), unsafe_allow_html=True)
 
 with chart_col_2:
+    st.markdown(aux_functions.chart_title("Demand Cover by Source (%)", bg_color=theme.CORAL_TINT), unsafe_allow_html=True)
+
     fig_2 = px.pie(
         names=["Grid", "PV", "BESS Discharge"],
         values=[calc_data["MWh Unmet Demand after BESS"], calc_data["MWh PV Direct SC"], calc_data["MWh BESS Discharge"]],
@@ -225,10 +226,9 @@ with chart_col_2:
 
     fig_2.update_traces(marker=dict(colors=[theme.CHART_NAVY, theme.CYAN, theme.CORAL_DARK]), showlegend=True)
     fig_2.update_layout(
-        title=dict(text="Demand Cover by Source (%)", x=0.5, xanchor='center', font=dict(color='grey', size=14)),
         legend=dict(orientation="h", y=0, x=0.5, xanchor='center', yanchor='top', font=dict(size=10)),
-        height=235,
-        margin=dict(t=30, b=30, l=0, r=0),
+        height=210,
+        margin=dict(t=10, b=30, l=0, r=0),
         paper_bgcolor=theme.CORAL_TINT,
         plot_bgcolor=theme.CORAL_TINT
     )

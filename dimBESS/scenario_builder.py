@@ -111,6 +111,7 @@ def build_scenario(
         "Provider"                          :   provider,
         "Nominal Capacity"                  :   nominal_capacity,
         "N Containers"                      :   float(n_containers),
+        "DoD %"                             :   dod,
         "C-Factor"                          :   float(c_factor),
         "Tariff"                            :   tariff,
         "PPA Mode"                          :   price_mode,

@@ -1,3 +1,5 @@
+import io
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -148,42 +150,65 @@ with chart_col:
         legend=dict(orientation="h", y=-0.25, x=0.5, xanchor="center", itemsizing="constant", itemwidth=35, font=dict(size=10))
     )
 
-    st.plotly_chart(fig_1, use_container_width=True, key="energy_price_mix")
+    view_mode = st.radio(
+        "Vista", ["Gráfico", "Tabla"], horizontal=True, index=0,
+        key="energy_price_mix_view", label_visibility="collapsed"
+    )
+
+    if view_mode == "Gráfico":
+        st.plotly_chart(fig_1, use_container_width=True, key="energy_price_mix")
+    else:
+        st.dataframe(data_plot, use_container_width=True, hide_index=True)
+
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
+            data_plot.to_excel(writer, index=False, sheet_name="Operation")
+        st.download_button(
+            "Descargar tabla (Excel)",
+            data=excel_buffer.getvalue(),
+            file_name=f"bess_operation_{scenario_name}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
 
     if data_base is None:
         st.info("No hay datos horarios base disponibles para las agregaciones por periodo/hora (vuelve a Homepage).")
     else:
-        col1, col2, col3 = st.columns([1, 2, 3])
+        # Controles en su propia fila a ancho completo (antes iban en una st.columns([1,2,3])
+        # junto a los 2 gráficos: la columna de controles quedaba tan estrecha en pantallas no
+        # muy anchas que el expander "Filtros de fecha" se partía letra a letra en vez de
+        # envolver). Los gráficos se reparten el resto del ancho a partes iguales, debajo.
+        ctrl_col, filt_col = st.columns([1, 2])
 
-        with col1:
+        with ctrl_col:
             agg_type = st.selectbox(
                 "Tipo de agregación",
                 options=["sum", "mean", "percentil_10", "percentil_25", "percentil_50", "percentil_75", "percentil_90", "percentil_100"]
             )
 
-            agg_functions = {
-                "sum": "sum",
-                "mean": "mean",
-                "percentil_10": lambda x: np.percentile(x, 10),
-                "percentil_25": lambda x: np.percentile(x, 25),
-                "percentil_50": lambda x: np.percentile(x, 50),
-                "percentil_75": lambda x: np.percentile(x, 75),
-                "percentil_90": lambda x: np.percentile(x, 90),
-                "percentil_100": lambda x: np.percentile(x, 100)
+        agg_functions = {
+            "sum": "sum",
+            "mean": "mean",
+            "percentil_10": lambda x: np.percentile(x, 10),
+            "percentil_25": lambda x: np.percentile(x, 25),
+            "percentil_50": lambda x: np.percentile(x, 50),
+            "percentil_75": lambda x: np.percentile(x, 75),
+            "percentil_90": lambda x: np.percentile(x, 90),
+            "percentil_100": lambda x: np.percentile(x, 100)
+        }
+
+        st.markdown(
+            """
+            <style>
+            div[data-baseweb="select"] > div {
+                font-size: 12px !important;
+                color: black !important;
             }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
 
-            st.markdown(
-                """
-                <style>
-                div[data-baseweb="select"] > div {
-                    font-size: 12px !important;
-                    color: black !important;
-                }
-                </style>
-                """,
-                unsafe_allow_html=True
-            )
-
+        with filt_col:
             meses = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
             weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
             with st.expander("Filtros de fecha"):
@@ -222,7 +247,9 @@ with chart_col:
             price_period = data_period.groupby("Periodo")[price_cols].agg(agg_functions[agg_type]).reset_index()
             price_hora = data_period.groupby("Hora")[price_cols].agg(agg_functions[agg_type]).reset_index()
 
-        with col2:
+        chart_col2, chart_col3 = st.columns(2)
+
+        with chart_col2:
 
             fig_2 = go.Figure()
 
@@ -246,7 +273,7 @@ with chart_col:
 
             st.plotly_chart(fig_2, use_container_width=True, key="period_mix")
 
-        with col3:
+        with chart_col3:
             fig_3 = go.Figure()
 
             for col in mwh_cols:
@@ -255,6 +282,11 @@ with chart_col:
             for col in price_cols:
                 fig_3.add_trace(go.Scatter(x=price_hora["Hora"], y=price_hora[col], name=col, mode="lines", line=dict(color=colors.get(col), width=2), yaxis="y2"))
 
+            # Antes: leyenda fuera del área del gráfico (x=1.2) -- con use_container_width en
+            # una columna más estrecha, un margen/posición en coordenadas absolutas del propio
+            # plot no escala: la leyenda podía quedar recortada por el borde del SVG. La
+            # combinación de colores ya la documenta el gráfico de arriba (fig_1), así que se
+            # oculta aquí, igual que ya hacía fig_2.
             fig_3.update_layout(
                 barmode="stack",
                 height=300,
@@ -264,7 +296,7 @@ with chart_col:
                 xaxis=dict(title="Hora"),
                 yaxis=dict(title="Energy (MWh)", showgrid=True),
                 yaxis2=dict(title="Price (€/MWh)", overlaying="y", side="right", showgrid=False),
-                legend=dict(orientation="v", y=1, yanchor="top", x=1.2, xanchor="left", font=dict(size=10), borderwidth=0)
+                showlegend=False
             )
 
             st.plotly_chart(fig_3, use_container_width=True, key="hora_mix")
