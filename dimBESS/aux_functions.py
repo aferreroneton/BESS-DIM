@@ -315,6 +315,7 @@ def contracted_power_analysis(results, data_base, inputs, delta_power=0.0, strat
     hourly["Capacidad de carga (MWh)"] = hourly["Hueco (MW)"].clip(upper=pch_max).where(hourly["En ventana"], 0.0)
     hourly["Carga red real (MWh)"] = res["Carga de red"].values
     hourly["Carga PV real (MWh)"] = res["Carga de PV"].values
+    hourly["Hueco libre (MW)"] = (hourly["Hueco (MW)"] - hourly["Carga red real (MWh)"]).clip(lower=0)
     # Importación total de red = lo que se sigue pidiendo a red tras PV y BESS + lo que se
     # carga de red: es lo que consume potencia contratada.
     hourly["Importación demanda (MW)"] = res["Cobertura red"].values
@@ -331,6 +332,7 @@ def contracted_power_analysis(results, data_base, inputs, delta_power=0.0, strat
     hourly["Demanda > contrato"] = unmet > contract + tol
     hourly["Demanda >= 95% contrato"] = unmet >= 0.95*contract
     hourly["Importando al contrato"] = hourly["Importación total (MW)"] >= contract - 1e-3
+    hourly["Saturada en ventana"] = hourly["En ventana"] & hourly["Importando al contrato"]
     hourly["Importando >= 95% contrato"] = hourly["Importación total (MW)"] >= 0.95*contract
     hourly["Hueco >= potencia BESS"] = hourly["Hueco (MW)"] >= pch_max - tol
 
@@ -346,6 +348,9 @@ def contracted_power_analysis(results, data_base, inputs, delta_power=0.0, strat
         "Carga de red (MWh)"            :   g["Carga red real (MWh)"].sum(),
         "Carga PV (MWh)"                :   g["Carga PV real (MWh)"].sum(),
         "Importación demanda (MWh)"     :   g["Importación demanda (MW)"].sum(),
+        # Importación máxima potencial = potencia contratada x todas las horas del periodo en el año.
+        "Importación máxima (MWh)"      :   g["Potencia contratada (MW)"].sum(),
+        "Horas saturadas (ventana)"     :   g["Saturada en ventana"].sum().astype(int),
         "Horas con carga"               :   g["Carga red real (MWh)"].apply(lambda x: int((x > tol).sum())),
         "Horas limitadas (contrato)"    :   g["Limitada por contrato"].sum().astype(int),
         "Horas limitadas (BESS)"        :   g["Limitada por BESS"].sum().astype(int),
@@ -361,6 +366,7 @@ def contracted_power_analysis(results, data_base, inputs, delta_power=0.0, strat
         "Necesaria P50 (MW)"            :   gw["Necesaria para cargar a plena potencia (MW)"].quantile(0.5),
         "Necesaria P90 (MW)"            :   gw["Necesaria para cargar a plena potencia (MW)"].quantile(0.9),
     })
+    by_period["Saturación ventana (%)"] = by_period["Horas saturadas (ventana)"]/by_period["Horas en ventana"].replace(0, np.nan)*100
     by_period["Libre (MWh)"] = (by_period["Capacidad (MWh)"] - by_period["Carga de red (MWh)"]).clip(lower=0)
     by_period["Utilización (%)"] = by_period["Carga de red (MWh)"]/by_period["Capacidad (MWh)"].replace(0, np.nan)*100
     by_period["Pico / contrato (%)"] = by_period["Pico importación (MW)"]/by_period["Potencia contratada (MW)"]*100

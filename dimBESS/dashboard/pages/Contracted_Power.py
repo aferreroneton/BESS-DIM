@@ -1,3 +1,4 @@
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -63,15 +64,37 @@ with tab_capacity:
         "Hueco = potencia contratada − demanda no cubierta por PV."
     )
 
-    chart_title("Grid Import by Period (MWh/year)")
+    chart_title("Grid Import vs Maximum Import by Period (MWh/year)")
     fig_imp = go.Figure()
     fig_imp.add_bar(x=by_period.index, y=by_period["Importación demanda (MWh)"], name="Para demanda del cliente", marker_color=theme.NAVY_DARK)
     fig_imp.add_bar(x=by_period.index, y=by_period["Carga de red (MWh)"], name="Para carga BESS", marker_color=theme.CORAL_DARK)
+    fig_imp.add_scatter(
+        x=by_period.index, y=by_period["Importación máxima (MWh)"], name="Máximo (contratada × horas del periodo)",
+        mode="markers", marker=dict(symbol="line-ew", size=40, line=dict(width=3, color=theme.CHART_CYAN_SOFT))
+    )
     fig_imp.update_layout(barmode="stack", height=380, xaxis_title="Periodo", margin=dict(l=60, r=40, t=20, b=50))
     st.plotly_chart(fig_imp, width="stretch")
     st.caption(
-        "Energía tomada de red en el año, separando la demanda del cliente (tras PV y descarga BESS) de la carga del BESS. "
-        "El pico de importación frente a la potencia contratada está en la tabla 'Contracted Power KPIs'."
+        "Energía tomada de red en el año (demanda del cliente tras PV y BESS, más carga del BESS) frente al máximo importable: "
+        "potencia contratada × todas las horas del periodo."
+    )
+
+    chart_title("Saturated Hours in Charging Window (% of window hours)")
+    fig_sat = go.Figure()
+    fig_sat.add_bar(
+        x=by_period.index, y=by_period["Saturación ventana (%)"], marker_color=theme.CORAL_DARK,
+        text=[f"{p:.1f}% · {h:,.0f} h" if pd.notna(p) else f"{h:,.0f} h" for h, p in zip(by_period["Horas saturadas (ventana)"], by_period["Saturación ventana (%)"])],
+        textposition="outside", name="Saturación"
+    )
+    fig_sat.update_layout(
+        height=380, xaxis_title="Periodo", yaxis_title="% de horas de ventana",
+        margin=dict(l=60, r=40, t=30, b=50), showlegend=False
+    )
+    fig_sat.update_yaxes(ticksuffix="%", rangemode="tozero")
+    st.plotly_chart(fig_sat, width="stretch")
+    st.caption(
+        "Porcentaje de las horas de ventana de carga del periodo en las que la importación de red alcanza la potencia contratada "
+        "(sobre la barra, también las horas al año). Al ser un porcentaje, los periodos son comparables aunque tengan distinto número de horas."
     )
 
     st.markdown(
@@ -151,7 +174,7 @@ with tab_headroom:
         title = f"Hourly Headroom — {period_sel} · {stat_label} (MW)"
         note = (
             f"{stat_label} de cada hora sobre los días del periodo. Los estadísticos se calculan por separado en cada serie, "
-            "así que demanda sin cubrir + hueco puede no sumar exactamente la potencia contratada (sí con la media)."
+            "así que la pila puede no llegar exactamente a la potencia contratada (con la media sí)."
         )
     else:
         dates = sorted(hourly["Fecha"].unique())
@@ -161,28 +184,45 @@ with tab_headroom:
         title = f"Hourly Headroom — {day_sel:%d/%m/%Y} (MW)"
         period_day = ", ".join(sorted(frame["Periodo"].unique()))
         col_stat.markdown(f"**Periodo(s) del día:** {period_day}")
-        note = "Valores horarios del día seleccionado. Demanda sin cubrir y hueco se apilan hasta la potencia contratada."
+        note = "Valores horarios del día seleccionado. Demanda sin cubrir, carga de red y hueco libre se apilan hasta la potencia contratada."
 
     if frame.empty:
         st.info("No hay datos para la selección.")
     else:
         prof = {
             "unmet": hourly_stat(frame, "Demanda no cubierta por PV (MW)", stat),
-            "hueco": hourly_stat(frame, "Hueco (MW)", stat),
+            "hueco": hourly_stat(frame, "Hueco libre (MW)", stat),
             "contrato": hourly_stat(frame, "Potencia contratada (MW)", stat),
             "bess": hourly_stat(frame, "Potencia de carga BESS (MW)", stat),
             "carga_red": hourly_stat(frame, "Carga red real (MWh)", stat),
         }
-        idx = prof["unmet"].index
+        all_hours = sorted(hourly["Hora"].unique())
+        prof = {k: v.reindex(all_hours) for k, v in prof.items()}  # horas sin datos en este periodo -> hueco, no línea falsa
+        idx = all_hours
+        n_days = frame.groupby("Hora").size().reindex(all_hours)
+        pct_charging = frame.groupby("Hora")["Carga red real (MWh)"].apply(lambda x: (x > 1e-6).mean()*100).reindex(all_hours)
+        hover_days = n_days.fillna(0).astype(int)
         chart_title(title)
         fig_prof = go.Figure()
+        if mode == "Estadístico del periodo":
+            fig_prof.add_bar(
+                x=idx, y=pct_charging, name="% de días con carga de red", yaxis="y2",
+                marker_color="rgba(214,90,90,0.18)", hovertemplate="Hora %{x}: %{y:.0f}% de los días con carga<extra></extra>"
+            )
         fig_prof.add_scatter(
             x=idx, y=prof["unmet"], name="Demanda sin cubrir", mode="lines",
-            stackgroup="demanda", line=dict(width=0.5, color=theme.CHART_NAVY), fillcolor="rgba(75,73,155,0.55)"
+            stackgroup="demanda", line=dict(width=0.5, color=theme.CHART_NAVY), fillcolor="rgba(75,73,155,0.55)",
+            customdata=hover_days, hovertemplate="Hora %{x}: %{y:.2f} MW (%{customdata} días)<extra>Demanda sin cubrir</extra>"
         )
         fig_prof.add_scatter(
-            x=idx, y=prof["hueco"], name="Hueco", mode="lines",
-            stackgroup="demanda", line=dict(width=0.5, color=theme.CHART_CYAN_SOFT), fillcolor="rgba(0,180,202,0.35)"
+            x=idx, y=prof["carga_red"], name="Carga de red", mode="lines",
+            stackgroup="demanda", line=dict(width=0.5, color=theme.CORAL_DARK), fillcolor="rgba(214,90,90,0.65)",
+            customdata=hover_days, hovertemplate="Hora %{x}: %{y:.2f} MW (%{customdata} días)<extra>Carga de red</extra>"
+        )
+        fig_prof.add_scatter(
+            x=idx, y=prof["hueco"], name="Hueco libre", mode="lines",
+            stackgroup="demanda", line=dict(width=0.5, color=theme.CHART_CYAN_SOFT), fillcolor="rgba(0,180,202,0.35)",
+            customdata=hover_days, hovertemplate="Hora %{x}: %{y:.2f} MW (%{customdata} días)<extra>Hueco libre</extra>"
         )
         fig_prof.add_scatter(
             x=idx, y=prof["contrato"], name="Potencia contratada", mode="lines",
@@ -192,16 +232,20 @@ with tab_headroom:
             x=idx, y=prof["bess"], name="Potencia BESS", mode="lines",
             line=dict(color=theme.MUTED, width=2, dash="dot")
         )
-        fig_prof.add_scatter(
-            x=idx, y=prof["carga_red"], name="Carga de red", mode="lines+markers",
-            line=dict(color=theme.CORAL_DARK, width=2)
-        )
         fig_prof.update_layout(
-            height=400, xaxis_title="Hora del día", margin=dict(l=60, r=40, t=20, b=50),
-            legend=dict(orientation="h", y=-0.25)
+            height=400, xaxis_title="Hora del día", margin=dict(l=60, r=60, t=20, b=50),
+            legend=dict(orientation="h", y=-0.25),
+            yaxis=dict(title="MW"),
+            yaxis2=dict(title="% días con carga", overlaying="y", side="right", range=[0, 100], showgrid=False, ticksuffix="%"),
+            xaxis=dict(dtick=1),
         )
         st.plotly_chart(fig_prof, width="stretch")
-        st.caption(note + " La carga de red solo puede ocupar el menor entre el hueco y la potencia BESS.")
+        st.caption(
+            note + " Un mismo periodo cubre horas distintas según mes y tipo de día (p. ej. P6 son las noches de todos los días y "
+            "los fines de semana completos), así que cada hora se calcula sobre un número distinto de días (se ve al pasar el cursor); "
+            "las horas que no pertenecen al periodo quedan vacías. La carga de red ocurre solo en una parte de los días: con la "
+            "mediana o percentiles bajos sale 0 en la mayoría de horas; la barra de fondo indica en qué % de los días hay carga."
+        )
 
     heat_label = stat_label if mode == "Estadístico del periodo" else "Media"
     heat_stat = stat if mode == "Estadístico del periodo" else "mean"
