@@ -114,9 +114,15 @@ page4 = st.Page(
     icon=":material/calendar_month:"
 )
 
+page5 = st.Page(
+    page="pages/Contracted_Power.py",
+    title="Contracted Power",
+    icon=":material/electric_bolt:"
+)
+
 #----------------------------------------NAVIGATION SETUP----------------------------------------
 
-pg = st.navigation(pages=[home_page, page0, page_results, page_projection, page1, page2, page3, page4])
+pg = st.navigation(pages=[home_page, page0, page_results, page_projection, page1, page2, page3, page4, page5])
 
 #----------------------------------------RUN SETUP----------------------------------------
 

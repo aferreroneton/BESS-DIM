@@ -253,10 +253,15 @@ def project_savings_extended(savings_y1, savings_by_calib_year, provider, extens
 
     true_ratio = {1: 1.0}
     for year, savings_year in savings_by_calib_year.items():
-        true_ratio[year] = savings_year/savings_y1 if savings_y1 else 0.0
+        if pd.notna(savings_year):
+            true_ratio[year] = savings_year/savings_y1 if savings_y1 else 0.0
 
-    correction_points = [true_ratio[y]/raw_ratio[y] for y in EXTENDED_STUDY_YEARS]
-    coeffs = np.polyfit(EXTENDED_STUDY_YEARS, correction_points, len(EXTENDED_STUDY_YEARS)-1)
+    # Si algún año de EXTENDED_STUDY_YEARS no se pudo resolver (ver kpi_row_from_results),
+    # true_ratio no tiene esa clave: se calibra solo con los años que sí resolvieron (el año
+    # 1 siempre está, por construcción) en vez de fallar el ajuste polinómico o propagar NaN.
+    calib_years_available = sorted(true_ratio)
+    correction_points = [true_ratio[y]/raw_ratio[y] for y in calib_years_available]
+    coeffs = np.polyfit(calib_years_available, correction_points, len(calib_years_available)-1)
     correction_poly = np.poly1d(coeffs)
 
     ratios = np.array([raw_ratio[year]*correction_poly(year) for year in years_list])
@@ -634,7 +639,20 @@ def kpi_row_from_results(data_base, scenario, results, inputs, horizon_years, sa
                 f"extension_data/y1 (ver load_extension_data / sweep_bess_sizes)."
             )
         data_by_year = project_year_data(data_base, extension_data, y1, years=calib_years)
-        savings_by_calib_year = {y: _solve_scenario_year_savings(data_by_year[y], scenario) for y in calib_years}
+        for y in calib_years:
+            try:
+                savings_by_calib_year[y] = _solve_scenario_year_savings(data_by_year[y], scenario)
+            except RuntimeError as e:
+                # Un año concreto puede salir infactible (p.ej. la demanda proyectada supera
+                # la potencia contratada en una hora de la ventana de carga, donde no se
+                # permite descargar batería para compensar) sin que el resto de años o de
+                # escenarios del sweep tengan por qué fallar. Se deja como NaN -- se excluye
+                # de los puntos de calibración en project_savings_extended -- en vez de
+                # abortar todo el "Run Scenarios" por un único año de un único escenario.
+                print(
+                    f"WARNING: Scenario '{scenario["Scenario"]}', año {y} (Extended study) "
+                    f"no se pudo resolver ({e}); se excluye de la calibración de ese escenario."
+                )
 
         proyeccion = project_savings_extended(
             savings_y1=savings_y1, savings_by_calib_year=savings_by_calib_year,
@@ -729,6 +747,79 @@ def _solve_scenario_combined(data_base, scenario, horizon_years, savings_thresho
     kpi_row, savings_by_year = kpi_row_from_results(data_base, scenario, results, inputs, horizon_years, savings_threshold, extension_data, y1, leasing_tables)
 
     return scenario["Scenario"], results, inputs, scenario, kpi_row, savings_by_year
+
+
+def _solve_savings_with_extra_power(data_base, scenario, label, delta_by_period):
+    """
+    Resuelve el escenario con potencia contratada ampliada (delta_by_period: {periodo: +MW};
+    los periodos que no aparezcan no cambian) y devuelve las métricas de año 1 para comparar.
+    Función a nivel de módulo para poder lanzarse en un ProcessPoolExecutor.
+    """
+
+    data = data_base.copy()
+    data["Cont Power MW"] = data["Cont Power MW"] + data["Period"].map(delta_by_period).fillna(0.0)
+
+    try:
+        _, results, inputs = solve_scenario(data, scenario)
+        calc = aux_functions.calculate_table(results, inputs["PPA Price"], inputs)
+    except RuntimeError as e:
+        return {"Caso": label, "Error": str(e)}
+
+    return {
+        "Caso"                  :   label,
+        "€ Savings from BESS"   :   calc["€ Savings from BESS"],
+        "MWh Charge from Grid"  :   calc["MWh Charge from Grid"],
+        "MWh Charge from PV"    :   calc["MWh Charge from PV"],
+        "MWh BESS Discharge"    :   calc["MWh BESS Discharge"],
+    }
+
+
+def contracted_power_marginal_value(data_base, scenario, step_mw=1.0, n_workers=None, progress_cb=None):
+    """
+    Valor marginal de la potencia contratada (tipo "water value"): cuánto sube el ahorro
+    del BESS en año 1 al ampliar la potencia contratada en step_mw, re-resolviendo el
+    despacho con la estrategia del propio escenario.
+
+    Casos: "Base" (sin cambios, resuelto aquí mismo para que la comparación sea limpia),
+    uno por periodo (+step_mw SOLO en ese periodo) y "Todos" (+step_mw en todos a la vez).
+    Devuelve un DataFrame indexado por caso con el ahorro, sus deltas frente a Base y el
+    valor marginal en € por MW añadido y año (para "Todos", por MW de subida uniforme).
+
+    El coste computacional es el de (n_periodos + 2) resoluciones del año 1: segundos con
+    "Solve (PBI logic)", minutos con las estrategias LP.
+    """
+
+    periods = sorted(data_base["Period"].dropna().unique())
+    jobs = [("Base", {})]
+    jobs += [(p, {p: step_mw}) for p in periods]
+    jobs += [("Todos", {p: step_mw for p in periods})]
+
+    rows = []
+    if n_workers == 1:
+        for i, (label, delta) in enumerate(jobs):
+            rows.append(_solve_savings_with_extra_power(data_base, scenario, label, delta))
+            if progress_cb:
+                progress_cb(i + 1, len(jobs))
+    else:
+        workers = n_workers or max(min(os.cpu_count() - 1, len(jobs)), 1)
+        with ProcessPoolExecutor(max_workers=workers) as executor:
+            futures = [executor.submit(_solve_savings_with_extra_power, data_base, scenario, label, delta) for label, delta in jobs]
+            for done, future in enumerate(as_completed(futures), start=1):
+                rows.append(future.result())
+                if progress_cb:
+                    progress_cb(done, len(jobs))
+
+    df = pd.DataFrame(rows).set_index("Caso").reindex([label for label, _ in jobs])
+    if "Error" in df.columns and df["€ Savings from BESS"].isna().any():
+        failed = df[df["€ Savings from BESS"].isna()].index.tolist()
+        raise RuntimeError(f"No se pudo resolver el caso(s) {failed}: {df.loc[failed, 'Error'].tolist()}")
+
+    base = df.loc["Base"]
+    for col, name in [("€ Savings from BESS", "Δ Savings (€/año)"), ("MWh BESS Discharge", "Δ Descarga (MWh)"),
+                      ("MWh Charge from Grid", "Δ Carga red (MWh)"), ("MWh Charge from PV", "Δ Carga PV (MWh)")]:
+        df[name] = df[col] - base[col]
+    df["Valor marginal (€ por MW y año)"] = df["Δ Savings (€/año)"]/step_mw
+    return df.drop(columns=[c for c in ["Error"] if c in df.columns])
 
 
 def solve_and_analyze_scenarios(

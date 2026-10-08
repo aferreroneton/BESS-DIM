@@ -258,3 +258,113 @@ def freq_kpis(results, inputs, freq):
     return(results_freq)
 
 
+
+
+# Hora (0-23) a partir de la cual la ventana de carga se cierra si no hay excedente de PV más
+# tarde ese día: t_end = max(suelo, última hora con excedente PV). Es el mismo criterio que
+# usan los motores de resolución (best_price_daily.py y pv_first_daily.py: 16;
+# pbi_logic_daily.py: 15). Si cambia allí, hay que cambiarlo aquí.
+CHARGE_WINDOW_FLOOR_HOUR = {"Solve (PBI logic)": 15}
+CHARGE_WINDOW_FLOOR_HOUR_DEFAULT = 16
+
+
+def contracted_power_analysis(results, data_base, inputs, delta_power=0.0, strategy=None):
+    """
+    Cuánto limita la potencia contratada a la carga desde red, hora a hora y por periodo.
+
+    Hueco de una hora = max(ContPower - demanda no cubierta por el PV, 0) -- misma definición
+    que el "Cap by ContPower from grid" de PBI. Capacidad de carga desde red de esa hora =
+    min(hueco, potencia de carga de la batería), contada solo en las horas de la ventana de
+    carga (fuera de ella el despacho no permite cargar, así que no es capacidad real).
+
+    delta_power (MW) suma/resta potencia contratada en todas las horas (sensibilidad: no
+    re-resuelve el despacho, la carga real no cambia; para el efecto sobre el ahorro, ver
+    dimBESS.contracted_power_marginal_value). strategy elige el suelo de la ventana de carga.
+
+    Devuelve (por_periodo, horario).
+    """
+
+    n = (min(len(data_base), len(results))//24)*24
+    data = data_base.reset_index(drop=True).iloc[:n]
+    res = results.reset_index(drop=True).iloc[:n]
+
+    pch_max = inputs["Pot BESS"]*inputs["N containers"]*inputs["DoD %"]*inputs["C-factor"]
+    tol = 1e-6
+
+    # Ventana de carga por día (misma regla que los modelos).
+    floor_hour = CHARGE_WINDOW_FLOOR_HOUR.get(strategy, CHARGE_WINDOW_FLOOR_HOUR_DEFAULT)
+    pv_surplus = np.maximum(res["Producción PV"].values - res["Demanda"].values, 0).reshape(-1, 24)
+    has_surplus = pv_surplus > 0
+    last_pv = np.where(has_surplus.any(axis=1), 23 - np.argmax(has_surplus[:, ::-1], axis=1), -1)
+    t_end = np.minimum(np.maximum(floor_hour, last_pv), 23)
+    in_window = (np.arange(24)[None, :] <= t_end[:, None]).reshape(-1)
+
+    hourly = pd.DataFrame({
+        "Fecha"         :   pd.to_datetime(data["Date&Time"]).dt.date.values,
+        "Periodo"       :   data["Period"].values,
+        "Hora"          :   data["HourOfDay"].values,
+        "Mes"           :   data["Month num"].values,
+        "Potencia contratada (MW)"  :   data["Cont Power MW"].values + delta_power,
+        "En ventana"    :   in_window,
+    })
+    contract = hourly["Potencia contratada (MW)"]
+    unmet = (res["Demanda"] - res["Producción PV"]).clip(lower=0).values
+    hourly["Demanda no cubierta por PV (MW)"] = unmet
+    hourly["Hueco (MW)"] = (contract - unmet).clip(lower=0)
+    hourly["Potencia de carga BESS (MW)"] = pch_max
+    hourly["Capacidad de carga (MWh)"] = hourly["Hueco (MW)"].clip(upper=pch_max).where(hourly["En ventana"], 0.0)
+    hourly["Carga red real (MWh)"] = res["Carga de red"].values
+    hourly["Carga PV real (MWh)"] = res["Carga de PV"].values
+    # Importación total de red = lo que se sigue pidiendo a red tras PV y BESS + lo que se
+    # carga de red: es lo que consume potencia contratada.
+    hourly["Importación demanda (MW)"] = res["Cobertura red"].values
+    hourly["Importación total (MW)"] = res["Cobertura red"].values + hourly["Carga red real (MWh)"].values
+    hourly["Necesaria para cargar a plena potencia (MW)"] = unmet + pch_max
+
+    charging = hourly["Carga red real (MWh)"] > tol
+    hourly["Limitada por contrato"] = charging & (hourly["Carga red real (MWh)"] >= hourly["Hueco (MW)"] - tol) & (hourly["Hueco (MW)"] < pch_max - tol)
+    hourly["Limitada por BESS"] = charging & (hourly["Carga red real (MWh)"] >= pch_max - tol)
+    # Tope superior de lo que el contrato impide cargar (no todo se habría usado: el
+    # presupuesto diario de carga también manda).
+    hourly["Carga bloqueada por contrato (MWh)"] = (pch_max - hourly["Carga red real (MWh)"]).where(hourly["Limitada por contrato"], 0.0)
+    hourly["Sin hueco"] = hourly["Hueco (MW)"] <= tol
+    hourly["Demanda > contrato"] = unmet > contract + tol
+    hourly["Demanda >= 95% contrato"] = unmet >= 0.95*contract
+    hourly["Importando al contrato"] = hourly["Importación total (MW)"] >= contract - 1e-3
+    hourly["Importando >= 95% contrato"] = hourly["Importación total (MW)"] >= 0.95*contract
+    hourly["Hueco >= potencia BESS"] = hourly["Hueco (MW)"] >= pch_max - tol
+
+    g = hourly.groupby("Periodo")
+    gw = hourly[hourly["En ventana"]].groupby("Periodo")  # métricas de carga: solo horas donde se puede cargar
+
+    by_period = pd.DataFrame({
+        "Horas en ventana"              :   gw.size(),
+        # La potencia contratada es constante dentro de un periodo (viene de un lookup
+        # periodo -> MW), así que first() es exacto, no una media.
+        "Potencia contratada (MW)"      :   g["Potencia contratada (MW)"].first(),
+        "Capacidad (MWh)"               :   g["Capacidad de carga (MWh)"].sum(),
+        "Carga de red (MWh)"            :   g["Carga red real (MWh)"].sum(),
+        "Carga PV (MWh)"                :   g["Carga PV real (MWh)"].sum(),
+        "Importación demanda (MWh)"     :   g["Importación demanda (MW)"].sum(),
+        "Horas con carga"               :   g["Carga red real (MWh)"].apply(lambda x: int((x > tol).sum())),
+        "Horas limitadas (contrato)"    :   g["Limitada por contrato"].sum().astype(int),
+        "Horas limitadas (BESS)"        :   g["Limitada por BESS"].sum().astype(int),
+        "Bloqueada por contrato (MWh)"  :   g["Carga bloqueada por contrato (MWh)"].sum(),
+        "Pico demanda (MW)"             :   g["Demanda no cubierta por PV (MW)"].max(),
+        "Pico importación (MW)"         :   g["Importación total (MW)"].max(),
+        "Horas al límite"               :   g["Importando al contrato"].sum().astype(int),
+        "Horas ≥95%"                    :   g["Importando >= 95% contrato"].sum().astype(int),
+        "Horas demanda ≥95%"            :   g["Demanda >= 95% contrato"].sum().astype(int),
+        "Horas demanda > contrato"      :   g["Demanda > contrato"].sum().astype(int),
+        "Horas sin hueco"               :   gw["Sin hueco"].sum().astype(int),
+        "Hueco ≥ BESS (% horas)"        :   gw["Hueco >= potencia BESS"].mean()*100,
+        "Necesaria P50 (MW)"            :   gw["Necesaria para cargar a plena potencia (MW)"].quantile(0.5),
+        "Necesaria P90 (MW)"            :   gw["Necesaria para cargar a plena potencia (MW)"].quantile(0.9),
+    })
+    by_period["Libre (MWh)"] = (by_period["Capacidad (MWh)"] - by_period["Carga de red (MWh)"]).clip(lower=0)
+    by_period["Utilización (%)"] = by_period["Carga de red (MWh)"]/by_period["Capacidad (MWh)"].replace(0, np.nan)*100
+    by_period["Pico / contrato (%)"] = by_period["Pico importación (MW)"]/by_period["Potencia contratada (MW)"]*100
+    by_period["Déficit P90 (MW)"] = (by_period["Necesaria P90 (MW)"] - by_period["Potencia contratada (MW)"]).clip(lower=0)
+    by_period = by_period.sort_index()
+
+    return by_period, hourly
