@@ -9,6 +9,25 @@ import pbi_logic_daily
 import aux_functions
 import mwh_extension
 
+try:
+    import python_calamine  # noqa: F401  (motor de lectura de Excel)
+    _EXCEL_ENGINE = "calamine"
+except ImportError:
+    _EXCEL_ENGINE = None
+
+
+def _read_excel(file, **kwargs):
+    """
+    pd.read_excel con el motor calamine (decenas de veces más rápido que openpyxl en las hojas
+    grandes, p. ej. la de precios Aurora de todas las tarifas) si python-calamine está
+    instalado; si no, cae al motor por defecto de pandas.
+    """
+
+    if _EXCEL_ENGINE is not None:
+        kwargs.setdefault("engine", _EXCEL_ENGINE)
+    return pd.read_excel(file, **kwargs)
+
+
 SAVINGS_MODEL_INTERCEPT = 0.943906
 SAVINGS_MODEL_B_YEAR = -0.003315
 SAVINGS_MODEL_B_YEAR2 = -0.000697
@@ -297,7 +316,7 @@ def load_hourly_data(file, sheet_name="Hourly Data"):
     error interno de Pyomo/CBC en vez de un aviso claro.
     """
 
-    data = pd.read_excel(file, sheet_name=sheet_name, header=2)
+    data = _read_excel(file, sheet_name=sheet_name, header=2)
     valid_mask = data["Date&Time"].notna()
     if not valid_mask.all():
         n_dropped = int((~valid_mask).sum())
@@ -312,7 +331,7 @@ def read_cups_info(file, sheet_name="CUPS"):
     'ContPower (MW)' que sí varía por periodo tarifario (P1-P6).
     """
 
-    df = pd.read_excel(file, sheet_name=sheet_name, header=0)
+    df = _read_excel(file, sheet_name=sheet_name, header=0)
 
     return {
         "Tariff"    :   df["Tariff"].dropna().iloc[0],
@@ -324,7 +343,7 @@ def read_cups_info(file, sheet_name="CUPS"):
 def read_cont_power_by_period(file, sheet_name="CUPS"):
     """Period -> ContPower (MW), la misma tabla que usa el año 1 (CUPS!A2:A7 / B2:B7)."""
 
-    df = pd.read_excel(file, sheet_name=sheet_name, header=0)
+    df = _read_excel(file, sheet_name=sheet_name, header=0)
 
     return df.set_index("Period")["ContPower (MW)"].to_dict()
 
@@ -344,7 +363,7 @@ def load_leasing_tables(file, sheet_name="Leasing"):
     Devuelve {tier_label: {leasing_scenario: {client_rating: fee_eur_month}}}.
     """
 
-    raw = pd.read_excel(file, sheet_name=sheet_name, header=None)
+    raw = _read_excel(file, sheet_name=sheet_name, header=None)
     ratings = raw.iloc[1, 3:9].astype(int).tolist()
 
     tables = {}
@@ -379,16 +398,16 @@ def load_extension_data(file, tariff):
     escenarios de "Extended study" (periodos/precios/curvas no dependen del escenario).
     """
 
-    periods = pd.read_excel(file, sheet_name="Periodos tarifarios", skiprows=2, nrows=13, usecols="B:Z")
+    periods = _read_excel(file, sheet_name="Periodos tarifarios", skiprows=2, nrows=13, usecols="B:Z")
     periods.columns = ["Month"] + list(range(1, 25))
 
-    prices_total = pd.read_excel(file, sheet_name="Aurora2026Q1_AllTariffs_FinalPr")
+    prices_total = _read_excel(file, sheet_name="Aurora2026Q1_AllTariffs_FinalPr")
     prices = prices_total[prices_total["Tariff"] == tariff][
         ["Date&Time", "Pool price", "Total Grid Costs", "Final Prices", "Tolls and RC"]
     ]
 
-    curves_risen = pd.read_excel(file, sheet_name="DefEff Curves - Risen", header=2, nrows=21, usecols="A:J")
-    curves_solax = pd.read_excel(file, sheet_name="DefEff Curves - Solax", header=2, nrows=21, usecols="A:J")
+    curves_risen = _read_excel(file, sheet_name="DefEff Curves - Risen", header=2, nrows=21, usecols="A:J")
+    curves_solax = _read_excel(file, sheet_name="DefEff Curves - Solax", header=2, nrows=21, usecols="A:J")
 
     return {
         "periods"               :   periods,
@@ -425,7 +444,7 @@ def project_year_data(data_base, extension_data, y1, years):
 
 def load_scenarios(file, sheet_name="Scenarios"):
 
-    df = pd.read_excel(file, sheet_name=sheet_name, header=0)
+    df = _read_excel(file, sheet_name=sheet_name, header=0)
     df = df.dropna(subset=["Scenario - Num"]).copy()
 
     if df.empty:
