@@ -387,12 +387,12 @@ PROFILE_COLUMNS = [
 ]
 
 
-def hourly_profile(frame, stat):
+def hourly_profile(frame, stat, rank_col="Importación total (MW)"):
     """
-    Perfil por hora del día. Con la media se promedia cada serie (la media es lineal: la pila sigue sumando la contratada media).
-    Con percentil, máximo o mínimo NO se toma el estadístico de cada serie por separado (darían un apilado incoherente, por encima
-    de la potencia contratada): se ordenan los días por importación total de red (demanda + carga) y, para cada hora, se toma el
-    día que ocupa esa posición con sus tres componentes y su potencia contratada, de modo que apilan exactamente la contratada de ese día.
+    Perfil por hora del día. Con la media se promedia cada serie (la media es lineal: la pila sigue sumando lo mismo que la contratada).
+    Con percentil, máximo o mínimo NO se toma el estadístico de cada serie por separado (darían un apilado incoherente): se ordenan los
+    días por rank_col (importación total de red, demanda + carga) y, para cada hora, se toma el día que ocupa esa posición con sus
+    tres componentes y su potencia contratada, de modo que apilan exactamente la contratada de ese día.
     """
 
     rows = {}
@@ -400,7 +400,7 @@ def hourly_profile(frame, stat):
         if stat == "mean":
             rows[hour] = g[PROFILE_COLUMNS].mean()
             continue
-        order = g["Importación total (MW)"].sort_values(kind="stable").index
+        order = g[rank_col].sort_values(kind="stable").index
         n_obs = len(order)
         if stat == "max":
             k = n_obs - 1
@@ -418,24 +418,34 @@ with tab_headroom:
     if mode == "All days":
         stat_label = col_stat.selectbox(
             "Statistic", list(STATS),
-            help="Applied to the total grid import (demand + BESS charge) of each hour of the day over all the days of the year. "
-                 "The chart shows the day at that position with its three components, so they always add up to its contracted power."
+            help="Applied to the contracted-power utilization (grid import for demand + BESS charge, as % of that day's contracted power) "
+                 "of each hour of the day over all the days of the year. The chart shows the day at that position with its three components."
         )
-        frame = hourly
+        # Contracted power differs by day type (weekday / weekend periods), so there is no single MW reference for "all days":
+        # every day is expressed as % of its own contracted power, and the stack always adds up to 100%.
+        contract_mw = hourly["Potencia contratada (MW)"].replace(0, np.nan)
+        frame = hourly.copy()
+        for col in ["Importación demanda (MW)", "Carga red real (MWh)", "Hueco libre (MW)", "Potencia de carga BESS (MW)"]:
+            frame[col] = hourly[col]/contract_mw*100
+        frame["Importación total (MW)"] = hourly["Importación total (MW)"]/contract_mw*100
+        frame["Potencia contratada (MW)"] = 100.0
+        unit = "%"
         stat = STATS[stat_label]
-        title = f"Hourly Headroom — {stat_label} (MW)"
+        title = f"Hourly Contracted Power Utilization — {stat_label} (% of contracted power)"
         note = (
-            f"{stat_label} of each hour of the day over all the days of the year. "
-            + ("Each series is averaged, so the stack adds up to the average contracted power."
+            f"{stat_label} of each hour of the day over all the days of the year, each day as % of its own contracted power "
+            "(the contract differs by day type, so there is no single MW reference). "
+            + ("Each series is averaged and the stack adds up to 100%."
                if stat == "mean" else
-               "Days are ranked by total grid import (demand + BESS charge); for each hour the chart shows the day at that position, "
-               "with its own three components and its own contracted power, so they stack up to that day's contracted power.")
+               "Days are ranked by utilization (grid import for demand + BESS charge); for each hour the chart shows the day at that "
+               "position, with its own three components, so they stack up to 100% of that day's contracted power.")
         )
     else:
         dates = sorted(hourly["Fecha"].unique())
         day_sel = col_stat.date_input("Date", value=dates[0], min_value=dates[0], max_value=dates[-1])
         frame = hourly[hourly["Fecha"] == day_sel]
         stat = "mean"
+        unit = "MW"
         title = f"Hourly Headroom — {day_sel:%d/%m/%Y} (MW)"
         note = "Hourly values of the selected day. Grid import for demand, grid charge and free headroom stack up to the contracted power."
 
@@ -443,6 +453,7 @@ with tab_headroom:
         st.info("No data for the selection.")
     else:
         profile = hourly_profile(frame, stat)
+        fmt_u = "%{y:.1f}%" if unit == "%" else "%{y:.2f} MW"
         prof = {
             "unmet": profile["Importación demanda (MW)"],
             "hueco": profile["Hueco libre (MW)"],
@@ -454,49 +465,43 @@ with tab_headroom:
         prof = {k: v.reindex(all_hours) for k, v in prof.items()}  # hours outside the period stay empty, no fake line
         idx = all_hours
         n_days = frame.groupby("Hora").size().reindex(all_hours)
-        pct_charging = frame.groupby("Hora")["Carga red real (MWh)"].apply(lambda x: (x > 1e-6).mean()*100).reindex(all_hours)
         hover_days = n_days.fillna(0).astype(int)
         chart_title(title)
         fig_prof = go.Figure()
-        if mode == "All days":
-            fig_prof.add_bar(
-                x=idx, y=pct_charging, name="% of days with grid charge", yaxis="y2",
-                marker_color="rgba(214,90,90,0.18)", hovertemplate="Hour %{x}: %{y:.0f}% of days with grid charge<extra></extra>"
-            )
         fig_prof.add_scatter(
             x=idx, y=prof["unmet"], name="Grid import for demand", mode="lines",
             stackgroup="demanda", line=dict(width=0.5, color=theme.CHART_NAVY), fillcolor="rgba(75,73,155,0.55)",
-            customdata=hover_days, hovertemplate="Hour %{x}: %{y:.2f} MW (%{customdata} days)<extra>Grid import for demand</extra>"
+            customdata=hover_days, hovertemplate="Hour %{x}: " + fmt_u + " (%{customdata} days)<extra>Grid import for demand</extra>"
         )
         fig_prof.add_scatter(
             x=idx, y=prof["carga_red"], name="Grid charge", mode="lines",
             stackgroup="demanda", line=dict(width=0.5, color=theme.CORAL_DARK), fillcolor="rgba(214,90,90,0.65)",
-            customdata=hover_days, hovertemplate="Hour %{x}: %{y:.2f} MW (%{customdata} days)<extra>Grid charge</extra>"
+            customdata=hover_days, hovertemplate="Hour %{x}: " + fmt_u + " (%{customdata} days)<extra>Grid charge</extra>"
         )
         fig_prof.add_scatter(
-            x=idx, y=prof["hueco"], name="Free headroom", mode="lines",
+            x=idx, y=prof["hueco"], name="Free headroom (hypothetical)", mode="lines",
             stackgroup="demanda", line=dict(width=0.5, color=theme.CHART_CYAN_SOFT), fillcolor="rgba(0,180,202,0.35)",
-            customdata=hover_days, hovertemplate="Hour %{x}: %{y:.2f} MW (%{customdata} days)<extra>Free headroom</extra>"
+            fillpattern=dict(shape="/", size=7, solidity=0.25, bgcolor="rgba(255,255,255,0)", fgcolor=theme.CHART_CYAN_SOFT),
+            customdata=hover_days, hovertemplate="Hour %{x}: " + fmt_u + " (%{customdata} days)<extra>Free headroom (hypothetical)</extra>"
         )
         fig_prof.add_scatter(
-            x=idx, y=prof["contrato"], name="Contracted power", mode="lines",
+            x=idx, y=prof["contrato"], name="Contracted power (100%)" if unit == "%" else "Contracted power", mode="lines",
             line=dict(color=theme.NAVY_DARK, width=2, dash="dash")
         )
         fig_prof.add_scatter(
-            x=idx, y=prof["bess"], name="BESS power", mode="lines",
+            x=idx, y=prof["bess"], name="BESS power (% of contract)" if unit == "%" else "BESS power", mode="lines",
             line=dict(color=theme.MUTED, width=2, dash="dot")
         )
         fig_prof.update_layout(
-            height=400, xaxis_title="Hour of day", margin=dict(l=60, r=60, t=20, b=50),
+            height=400, xaxis_title="Hour of day", margin=dict(l=60, r=40, t=20, b=50),
             legend=dict(orientation="h", y=-0.25),
-            yaxis=dict(title="MW"),
-            yaxis2=dict(title="% of days with grid charge", overlaying="y", side="right", range=[0, 100], showgrid=False, ticksuffix="%"),
+            yaxis=dict(title="% of contracted power" if unit == "%" else "MW", ticksuffix="%" if unit == "%" else ""),
             xaxis=dict(dtick=1),
         )
         st.plotly_chart(fig_prof, width="stretch")
         st.caption(
-            note + " Grid charge happens on only part of the days: with the median or low percentiles it is 0 in most hours; "
-            "the background bars show the share of days with grid charge."
+            note + " Free headroom (hatched) is hypothetical: contracted power not used by grid import for demand or BESS charge, "
+            "i.e. what the BESS could have charged from the grid without exceeding the contract."
         )
 
     heat_label = stat_label if mode == "All days" else "Mean"
