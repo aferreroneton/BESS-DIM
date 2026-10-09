@@ -293,9 +293,14 @@ def contracted_power_analysis(results, data_base, inputs, delta_power=0.0, strat
 
     # Ventana de carga por día (misma regla que los modelos).
     floor_hour = CHARGE_WINDOW_FLOOR_HOUR.get(strategy, CHARGE_WINDOW_FLOOR_HOUR_DEFAULT)
+    # Una fila por día (reshape(-1, 24)): pv_surplus[d, h] es el excedente PV de la hora h del día d, y
+    # todas las operaciones con axis=1 se hacen por día, igual que el bucle por días de los solvers.
     pv_surplus = np.maximum(res["Producción PV"].values - res["Demanda"].values, 0).reshape(-1, 24)
     has_surplus = pv_surplus > 0
+    # Última hora (0-23) con excedente PV de cada día, o -1 si ese día no hay excedente.
     last_pv = np.where(has_surplus.any(axis=1), 23 - np.argmax(has_surplus[:, ::-1], axis=1), -1)
+    # Fin de ventana por día. El tope 23 es solo una guarda (equivale al nh-1 de los solvers, que protege
+    # un último bloque incompleto): con datos reales last_pv nunca supera ~19, así que no actúa.
     t_end = np.minimum(np.maximum(floor_hour, last_pv), 23)
     in_window = (np.arange(24)[None, :] <= t_end[:, None]).reshape(-1)
 
@@ -310,16 +315,24 @@ def contracted_power_analysis(results, data_base, inputs, delta_power=0.0, strat
     contract = hourly["Potencia contratada (MW)"]
     unmet = (res["Demanda"] - res["Producción PV"]).clip(lower=0).values
     hourly["Demanda no cubierta por PV (MW)"] = unmet
-    hourly["Hueco (MW)"] = (contract - unmet).clip(lower=0)
+    # Importación para demanda = ImportDemand del modelo ("Cobertura red"). El despacho impone
+    # ImportDemand + CargaRed <= PotenciaContratada en cada hora, así que el hueco tras demanda
+    # es contratada - ImportDemand, y la carga de red nunca puede superarlo.
+    import_demand = res["Cobertura red"].values
+    hourly["Hueco (MW)"] = (contract - import_demand).clip(lower=0)
     hourly["Potencia de carga BESS (MW)"] = pch_max
     hourly["Capacidad de carga (MWh)"] = hourly["Hueco (MW)"].clip(upper=pch_max).where(hourly["En ventana"], 0.0)
     hourly["Carga red real (MWh)"] = res["Carga de red"].values
     hourly["Carga PV real (MWh)"] = res["Carga de PV"].values
+    hourly["Carga total (MWh)"] = hourly["Carga red real (MWh)"] + hourly["Carga PV real (MWh)"]
     hourly["Hueco libre (MW)"] = (hourly["Hueco (MW)"] - hourly["Carga red real (MWh)"]).clip(lower=0)
+    # Precio sombra de la potencia contratada (€ por MW extra en esa hora), solo si el despacho es un LP/MILP que lo calculó.
+    if "Valor marginal potencia (€/MW)" in res.columns:
+        hourly["Valor marginal (€/MW)"] = res["Valor marginal potencia (€/MW)"].values
     # Importación total de red = lo que se sigue pidiendo a red tras PV y BESS + lo que se
     # carga de red: es lo que consume potencia contratada.
-    hourly["Importación demanda (MW)"] = res["Cobertura red"].values
-    hourly["Importación total (MW)"] = res["Cobertura red"].values + hourly["Carga red real (MWh)"].values
+    hourly["Importación demanda (MW)"] = import_demand
+    hourly["Importación total (MW)"] = import_demand + hourly["Carga red real (MWh)"].values
     hourly["Necesaria para cargar a plena potencia (MW)"] = unmet + pch_max
 
     charging = hourly["Carga red real (MWh)"] > tol
@@ -331,8 +344,15 @@ def contracted_power_analysis(results, data_base, inputs, delta_power=0.0, strat
     hourly["Sin hueco"] = hourly["Hueco (MW)"] <= tol
     hourly["Demanda > contrato"] = unmet > contract + tol
     hourly["Demanda >= 95% contrato"] = unmet >= 0.95*contract
+    # "Saturada" = importación igual a la contratada con tolerancia de 1 kW. El despacho deja ruido numérico de ~1e-4 kWh,
+    # así que comparar con 0 exacto cuenta mal (Kappa 2 contenedores: 39 horas con holgura exactamente 0 frente a 147
+    # reales; no hay ninguna hora con holgura entre 1 W y 10 kW, así que la tolerancia no es sensible).
     hourly["Importando al contrato"] = hourly["Importación total (MW)"] >= contract - 1e-3
     hourly["Saturada en ventana"] = hourly["En ventana"] & hourly["Importando al contrato"]
+    # Saturación dividida según haya o no carga de red del BESS en esa hora.
+    hourly["Saturada por demanda"] = hourly["Saturada en ventana"] & ~charging
+    hourly["Saturada con carga BESS"] = hourly["Saturada en ventana"] & charging
+    hourly["Capacidad libre (MW)"] = (contract - hourly["Importación total (MW)"]).clip(lower=0)
     hourly["Importando >= 95% contrato"] = hourly["Importación total (MW)"] >= 0.95*contract
     hourly["Hueco >= potencia BESS"] = hourly["Hueco (MW)"] >= pch_max - tol
 
@@ -349,8 +369,20 @@ def contracted_power_analysis(results, data_base, inputs, delta_power=0.0, strat
         "Carga PV (MWh)"                :   g["Carga PV real (MWh)"].sum(),
         "Importación demanda (MWh)"     :   g["Importación demanda (MW)"].sum(),
         # Importación máxima potencial = potencia contratada x todas las horas del periodo en el año.
-        "Importación máxima (MWh)"      :   g["Potencia contratada (MW)"].sum(),
+        "Capacidad total (MWh)"         :   g["Potencia contratada (MW)"].sum(),
         "Horas saturadas (ventana)"     :   g["Saturada en ventana"].sum().astype(int),
+        "Horas saturadas por demanda"   :   g["Saturada por demanda"].sum().astype(int),
+        "Horas saturadas con carga BESS":   g["Saturada con carga BESS"].sum().astype(int),
+        # Métricas "en horas de carga" (ventana de carga): capacidad, carga e importación solo ahí.
+        "Capacidad en ventana (MWh)"    :   gw["Potencia contratada (MW)"].sum(),
+        "Capacidad tras demanda (MWh)"  :   gw["Hueco (MW)"].sum(),
+        "Carga de red en ventana (MWh)" :   gw["Carga red real (MWh)"].sum(),
+        "Importación demanda ventana (MWh)": gw["Importación demanda (MW)"].sum(),
+        "Importación total ventana (MWh)":  gw["Importación total (MW)"].sum(),
+        "Capacidad libre media (MW)"    :   gw["Capacidad libre (MW)"].mean(),
+        "Horas de ventana con hueco"    :   gw["Importando al contrato"].apply(lambda x: int((~x).sum())),
+        "Horas con carga de red (ventana)": gw["Carga red real (MWh)"].apply(lambda x: int((x > tol).sum())),
+        "Horas con carga (red o PV)"    :   g["Carga total (MWh)"].apply(lambda x: int((x > tol).sum())),
         "Horas con carga"               :   g["Carga red real (MWh)"].apply(lambda x: int((x > tol).sum())),
         "Horas limitadas (contrato)"    :   g["Limitada por contrato"].sum().astype(int),
         "Horas limitadas (BESS)"        :   g["Limitada por BESS"].sum().astype(int),
@@ -366,6 +398,14 @@ def contracted_power_analysis(results, data_base, inputs, delta_power=0.0, strat
         "Necesaria P50 (MW)"            :   gw["Necesaria para cargar a plena potencia (MW)"].quantile(0.5),
         "Necesaria P90 (MW)"            :   gw["Necesaria para cargar a plena potencia (MW)"].quantile(0.9),
     })
+    by_period["Capacidad en ventana / total (%)"] = by_period["Capacidad en ventana (MWh)"]/by_period["Capacidad total (MWh)"].replace(0, np.nan)*100
+    by_period["Carga / capacidad en ventana (%)"] = by_period["Carga de red en ventana (MWh)"]/by_period["Capacidad en ventana (MWh)"].replace(0, np.nan)*100
+    by_period["Carga / capacidad tras demanda (%)"] = by_period["Carga de red en ventana (MWh)"]/by_period["Capacidad tras demanda (MWh)"].replace(0, np.nan)*100
+    by_period["Capacidad libre / máxima (%)"] = (by_period["Capacidad en ventana (MWh)"] - by_period["Importación total ventana (MWh)"]).clip(lower=0)/by_period["Capacidad en ventana (MWh)"].replace(0, np.nan)*100
+    by_period["Saturación por demanda (%)"] = by_period["Horas saturadas por demanda"]/by_period["Horas en ventana"].replace(0, np.nan)*100
+    by_period["Saturación con carga BESS (%)"] = by_period["Horas saturadas con carga BESS"]/by_period["Horas en ventana"].replace(0, np.nan)*100
+    by_period["Saturación / horas con carga (%)"] = by_period["Horas saturadas con carga BESS"]/by_period["Horas con carga de red (ventana)"].replace(0, np.nan)*100
+    by_period["Saturación / horas con carga total (%)"] = by_period["Horas saturadas con carga BESS"]/by_period["Horas con carga (red o PV)"].replace(0, np.nan)*100
     by_period["Saturación ventana (%)"] = by_period["Horas saturadas (ventana)"]/by_period["Horas en ventana"].replace(0, np.nan)*100
     by_period["Libre (MWh)"] = (by_period["Capacidad (MWh)"] - by_period["Carga de red (MWh)"]).clip(lower=0)
     by_period["Utilización (%)"] = by_period["Carga de red (MWh)"]/by_period["Capacidad (MWh)"].replace(0, np.nan)*100

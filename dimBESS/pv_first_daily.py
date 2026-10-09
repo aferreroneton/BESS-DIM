@@ -3,6 +3,7 @@ from pyomo.environ import *
 from pyomo.environ import SolverFactory
 from pyomo.environ import Expression
 import numpy as np
+from best_price_daily import _contract_shadow_prices
 
 def _economic_cost(m, grid_price, grid_charge_price, pv_price, discharge_cost, ):
     return sum(
@@ -366,6 +367,7 @@ def opt_pv_first_daily(data, inputs, spill_mode="lexicographic", tee=False):
             grid_charge_price_notolls[sl],
             day_penalty,
         )
+        day_result["Valor marginal potencia (€/MW)"] = _contract_shadow_prices(model)
         all_results.append(pd.DataFrame(day_result))
 
         soc_init = model.SOC[nh - 1]()

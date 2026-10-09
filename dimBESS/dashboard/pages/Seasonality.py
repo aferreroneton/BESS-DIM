@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import theme
-from scenario_selector import require_scenario
+from scenario_selector import require_scenario, scenario_data_base
 
 st.set_page_config(
     page_title="BESS Dashboard - Seasonality",
@@ -17,7 +17,7 @@ st.subheader("BESS Operation Seasonality")
 results, inputs, scenario, scenario_name = require_scenario()
 st.caption(f"Escenario: **{scenario_name}**")
 
-data_base = st.session_state.get("data_base")
+data_base = scenario_data_base(scenario_name)
 if data_base is None:
     st.info("No hay datos horarios base disponibles (vuelve a Homepage).")
     st.stop()

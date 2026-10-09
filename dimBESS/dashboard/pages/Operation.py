@@ -7,7 +7,7 @@ import streamlit as st
 
 import aux_functions
 import theme
-from scenario_selector import require_scenario
+from scenario_selector import require_scenario, scenario_data_base
 
 st.set_page_config(
     page_title="BESS Dashboard - Operation",
@@ -20,7 +20,7 @@ st.subheader("BESS Operation Visualizer")
 results, inputs, scenario, scenario_name = require_scenario()
 st.caption(f"Escenario: **{scenario_name}**")
 
-data_base = st.session_state.get("data_base")
+data_base = scenario_data_base(scenario_name)
 
 ppa_price = inputs["PPA Price"]
 

@@ -139,6 +139,7 @@ if st.button("Resolver y añadir al dashboard"):
         "results": results,
         "inputs": inputs,
         "scenario": scenario,
+        "data_base": st.session_state["data_base"],
     }
     st.session_state["kpi_rows"][scenario["Scenario"]] = kpi_row
     st.session_state["savings_projections"][scenario["Scenario"]] = savings_by_year

@@ -30,3 +30,15 @@ def require_scenario():
     selected_name = st.session_state["selected_scenario"]
     entry = scenario_results[selected_name]
     return entry["results"], entry["inputs"], entry["scenario"], selected_name
+
+
+def scenario_data_base(scenario_name):
+    """
+    Datos horarios (Hourly Data) con los que se resolvió el escenario. Se guardan junto al
+    resultado para que visualización y resultado no puedan venir de Excels distintos; si el
+    escenario se resolvió antes de guardarlos, cae al data_base de la sesión (el de Homepage).
+    """
+
+    entry = st.session_state.get("scenario_results", {}).get(scenario_name, {})
+    data_base = entry.get("data_base")
+    return data_base if data_base is not None else st.session_state.get("data_base")

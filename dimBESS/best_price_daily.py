@@ -165,6 +165,39 @@ def _solve(model, tee=False):
         raise RuntimeError(f"Solver terminó con condición: {term}")
     return result
 
+def _contract_shadow_prices(model):
+    """
+    Precio sombra de la restricción de potencia contratada (pot_limit) en cada hora del bloque:
+    cuántos € bajaría el coste del día por cada MW extra de potencia contratada en esa hora
+    (= valor marginal de la potencia contratada, tipo "water value").
+
+    El modelo es un MILP (binarios u/v para no cargar y descargar a la vez), y CBC no devuelve duales
+    de un MILP. Se fijan los binarios en su valor óptimo y se resuelve el LP resultante (sobre una copia,
+    para no tocar la solución ya extraída), cuyo dual de pot_limit es el precio sombra con el reparto
+    carga/descarga del óptimo. Es una derivada de primer orden: vale para incrementos pequeños, hasta
+    que cambie la base; sumada por periodo da €/MW·año de subir la contratada de ese periodo.
+    Devuelve 0.0 en las horas donde la restricción no aprieta.
+    """
+
+    m = model.clone()
+    for t in m.T:
+        m.u[t].fix(round(value(m.u[t])))
+        m.v[t].fix(round(value(m.v[t])))
+    m.dual = Suffix(direction=Suffix.IMPORT)
+
+    solver = SolverFactory("cbc")
+    result = solver.solve(m)
+    term = result.solver.termination_condition
+    if term not in (TerminationCondition.optimal, TerminationCondition.feasible):
+        raise RuntimeError(f"LP de precios sombra terminó con condición: {term}")
+
+    shadow = []
+    for t in m.T:
+        d = m.dual.get(m.pot_limit[t], 0.0)
+        shadow.append(max(-d, 0.0) if d is not None else 0.0)
+    return shadow
+
+
 def _extract_results(model, demand, pv_prod, eta_dis, pv_price, grid_price, grid_charge_price, grid_charge_price_notolls):
 
     T = len(demand)
@@ -313,6 +346,7 @@ def opt_best_price_daily(data, inputs, tee=False):
             grid_charge_price[sl],
             grid_charge_price_notolls[sl],
         )
+        day_result["Valor marginal potencia (€/MW)"] = _contract_shadow_prices(model)
         all_results.append(pd.DataFrame(day_result))
 
         soc_init = model.SOC[nh - 1]()

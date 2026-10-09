@@ -390,21 +390,54 @@ def leasing_fee(leasing_tables, tier, leasing_scenario, client_rating):
         )
 
 
-def load_extension_data(file, tariff):
+AURORA_SHEET = "Aurora2026Q1_AllTariffs_FinalPr"
+AURORA_COLUMNS = ["Date&Time", "Pool price", "Total Grid Costs", "Final Prices", "Tolls and RC"]
+AURORA_PRICES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "aurora_prices.parquet")
+
+
+def refresh_aurora_prices(file, path=AURORA_PRICES_PATH):
+    """
+    Regenera la copia de la plataforma de los precios Aurora (todas las tarifas) a partir de la
+    hoja AURORA_SHEET de un Excel de entradas. Leer esa hoja (~700k filas) tarda ~30-50 s; la
+    copia en parquet se lee en <1 s. Ejecutar solo cuando se actualice la curva Aurora
+    (p. ej. nuevo trimestre):  python -c "import dimBESS; dimBESS.refresh_aurora_prices('entradas.xlsx')"
+    """
+
+    prices_total = _read_excel(file, sheet_name=AURORA_SHEET)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    prices_total[["Tariff"] + AURORA_COLUMNS].to_parquet(path, index=False, compression="zstd")
+    print(f"Precios Aurora guardados en {path} ({len(prices_total):,} filas, tarifas {sorted(prices_total['Tariff'].unique())})")
+
+
+def load_aurora_prices(file, tariff, prices_source="platform"):
+    """
+    Precios Aurora de una tarifa. prices_source="platform" usa la copia en parquet de la
+    plataforma (instantánea; si no existe cae al Excel); "excel" lee la hoja del Excel de
+    entradas (lento, pero respeta precios modificados en ese archivo).
+    """
+
+    if prices_source == "platform" and os.path.exists(AURORA_PRICES_PATH):
+        prices_total = pd.read_parquet(AURORA_PRICES_PATH)
+    else:
+        prices_total = _read_excel(file, sheet_name=AURORA_SHEET)
+    return prices_total[prices_total["Tariff"] == tariff][AURORA_COLUMNS]
+
+
+def load_extension_data(file, tariff, prices_source="platform"):
     """
     Carga las hojas adicionales del mismo Excel de entradas que necesita mwh_extension
     para proyectar demanda/generación/precios/degradación a un año de operación futuro
     (10, 20, ...). Se lee una vez por archivo/tarifa y se reutiliza para todos los
     escenarios de "Extended study" (periodos/precios/curvas no dependen del escenario).
+
+    Los precios Aurora (hoja grande y común a todos los proyectos) salen por defecto de la
+    copia de la plataforma (ver load_aurora_prices / refresh_aurora_prices).
     """
 
     periods = _read_excel(file, sheet_name="Periodos tarifarios", skiprows=2, nrows=13, usecols="B:Z")
     periods.columns = ["Month"] + list(range(1, 25))
 
-    prices_total = _read_excel(file, sheet_name="Aurora2026Q1_AllTariffs_FinalPr")
-    prices = prices_total[prices_total["Tariff"] == tariff][
-        ["Date&Time", "Pool price", "Total Grid Costs", "Final Prices", "Tolls and RC"]
-    ]
+    prices = load_aurora_prices(file, tariff, prices_source)
 
     curves_risen = _read_excel(file, sheet_name="DefEff Curves - Risen", header=2, nrows=21, usecols="A:J")
     curves_solax = _read_excel(file, sheet_name="DefEff Curves - Solax", header=2, nrows=21, usecols="A:J")
@@ -784,12 +817,16 @@ def _solve_savings_with_extra_power(data_base, scenario, label, delta_by_period)
     except RuntimeError as e:
         return {"Caso": label, "Error": str(e)}
 
+    year_kpis = aux_functions.freq_kpis(results.copy(), inputs, "YE").iloc[0]
+
     return {
         "Caso"                  :   label,
         "€ Savings from BESS"   :   calc["€ Savings from BESS"],
         "MWh Charge from Grid"  :   calc["MWh Charge from Grid"],
         "MWh Charge from PV"    :   calc["MWh Charge from PV"],
         "MWh BESS Discharge"    :   calc["MWh BESS Discharge"],
+        "# Charging hours / Day"        :   year_kpis["# Charging hours / Day"],
+        "KPI Charging Optimization"     :   year_kpis["KPI Charging Optimization"],
     }
 
 
@@ -837,6 +874,8 @@ def contracted_power_marginal_value(data_base, scenario, step_mw=1.0, n_workers=
     for col, name in [("€ Savings from BESS", "Δ Savings (€/año)"), ("MWh BESS Discharge", "Δ Descarga (MWh)"),
                       ("MWh Charge from Grid", "Δ Carga red (MWh)"), ("MWh Charge from PV", "Δ Carga PV (MWh)")]:
         df[name] = df[col] - base[col]
+    df["Δ # Charging hours / Day"] = df["# Charging hours / Day"] - base["# Charging hours / Day"]
+    df["Δ KPI Charging Optimization (pp)"] = df["KPI Charging Optimization"] - base["KPI Charging Optimization"]
     df["Valor marginal (€ por MW y año)"] = df["Δ Savings (€/año)"]/step_mw
     return df.drop(columns=[c for c in ["Error"] if c in df.columns])
 
@@ -891,7 +930,7 @@ def solve_and_analyze_scenarios(
             for future in as_completed(futures):
                 raw.append(future.result())
 
-    scenario_results = {name: {"results": results, "inputs": inputs, "scenario": scenario} for name, results, inputs, scenario, kpi_row, savings_by_year in raw}
+    scenario_results = {name: {"results": results, "inputs": inputs, "scenario": scenario, "data_base": data_base} for name, results, inputs, scenario, kpi_row, savings_by_year in raw}
     kpi_rows = {name: kpi_row for name, results, inputs, scenario, kpi_row, savings_by_year in raw}
     savings_projections = {name: savings_by_year for name, results, inputs, scenario, kpi_row, savings_by_year in raw}
 
