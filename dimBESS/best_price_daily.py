@@ -327,7 +327,11 @@ def opt_best_price_daily(data, inputs, tee=False):
             soc_max_effective=soc_max_effective[sl],
             pv_surplus=pv_surplus[sl],
             window=window,
-            soc_init=soc_init,
+            # La degradación reduce la capacidad efectiva de un día al siguiente: si la batería terminó el día anterior llena, su SOC
+            # puede quedar por encima del nuevo máximo. Como en horas de ventana no se permite descargar, el modelo sería infactible
+            # (p. ej. OXIGEN, día 125: SOC final 9,73076 frente a un máximo de 9,72948). Se recorta al máximo del día, igual que
+            # hace pbi_logic_daily al reconstruir el SOC.
+            soc_init=min(soc_init, min(soc_max_effective[sl])),
             charge_budget=E_MAX*(sum(deg[sl])/len(deg[sl]))*(nh/HOURS_PER_DAY),
             PCH_MAX=E_MAX*inputs["C-factor"],
             PDIS_MAX=E_MAX*inputs["C-factor"],
