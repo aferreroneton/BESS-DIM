@@ -264,7 +264,7 @@ def freq_kpis(results, inputs, freq):
 # tarde ese día: t_end = max(suelo, última hora con excedente PV). Es el mismo criterio que
 # usan los motores de resolución (best_price_daily.py y pv_first_daily.py: 16;
 # pbi_logic_daily.py: 15). Si cambia allí, hay que cambiarlo aquí.
-CHARGE_WINDOW_FLOOR_HOUR = {"Solve (PBI logic)": 15}
+CHARGE_WINDOW_FLOOR_HOUR = {"Solve (PBI logic)": 15, "Solve (PBI logic - PV first)": 15}
 CHARGE_WINDOW_FLOOR_HOUR_DEFAULT = 16
 
 

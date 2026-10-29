@@ -15,6 +15,7 @@ def _simulate_day(
     soc_init,
     PCH_MAX,
     PDIS_MAX,
+    pv_first=False,
 ):
     """
     Replica, hora a hora, la lógica de despacho real de PBI (workflow KNIME
@@ -54,10 +55,16 @@ def _simulate_day(
          descarga ('Dischargeable Storage' = Target CHARGING Volume ajustado
          por eficiencia, nodo #171) o el tope de potencia de descarga/hora.
 
-    No se replica el ajuste de rango +24 que PBI aplica solo a la estrategia
-    'PV surplus first' (fuerza PV antes que Red en el reparto pase lo que
-    pase con el precio): esta función modela la rama de PBI equivalente a
-    'Best price PV vs Grid', que es el caso de estudio de esta comparación.
+    pv_first=False modela la rama de PBI equivalente a 'Best price PV vs Grid'.
+    pv_first=True modela la rama 'PV surplus first' del mismo workflow, que
+    cambia dos cosas:
+      - Charging Source (nodo #140): PV siempre que haya excedente, sin
+        comparar su precio con el de red.
+      - Rank for CHARGING (+24 a las horas de fuente Red): en el reparto del
+        presupuesto todas las horas PV van antes que cualquier hora de Red,
+        pase lo que pase con el precio (dentro de cada grupo, por precio).
+    Validado contra PBI en 4 casos con 'PPA fixed price' (BA Glass, Alpla,
+    Friselva): ahorro año 1 dentro de +-0,005 % y % de carga desde PV idéntico.
     """
 
     T = len(demand)
@@ -71,7 +78,7 @@ def _simulate_day(
     effective_price = []
     potential_charge = []
     for t in range(T):
-        is_pv = pv_surplus[t] > 0 and pv_price[t] <= grid_charge_price[t]
+        is_pv = pv_surplus[t] > 0 and (pv_first or pv_price[t] <= grid_charge_price[t])
         charging_source.append("PV" if is_pv else "Grid")
         effective_price.append(pv_price[t] if is_pv else grid_charge_price[t])
 
@@ -134,7 +141,11 @@ def _simulate_day(
         t: round(effective_price[t], 1) + t / 10000.0
         for t in window_hours
     }
-    charge_order = sorted(window_hours, key=lambda t: adjusted_charging_price[t])
+    if pv_first:
+        # Rank for CHARGING + 24 para las horas de Red: todas las horas PV primero.
+        charge_order = sorted(window_hours, key=lambda t: (charging_source[t] != "PV", adjusted_charging_price[t]))
+    else:
+        charge_order = sorted(window_hours, key=lambda t: adjusted_charging_price[t])
 
     pv_ch = [0.0] * T
     grid_ch = [0.0] * T
@@ -190,7 +201,7 @@ def _simulate_day(
     }, soc[-1] if T > 0 else soc_init
 
 
-def opt_pbi_logic_daily(data, inputs, tee=False):
+def opt_pbi_logic_daily(data, inputs, tee=False, pv_first=False):
     """
     Resuelve el año iterando día a día (bloques de 24h), replicando la lógica
     de despacho REAL de PBI (heurística secuencial greedy con reparto por
@@ -283,6 +294,7 @@ def opt_pbi_logic_daily(data, inputs, tee=False):
             soc_init=soc_init,
             PCH_MAX=PCH_MAX,
             PDIS_MAX=PDIS_MAX,
+            pv_first=pv_first,
         )
         day_result["Precio Carga Red sin Tolls"] = grid_charge_price_notolls[sl]
         all_results.append(pd.DataFrame(day_result))

@@ -76,6 +76,7 @@ def build_scenario(
     price_mode,
     ppa_price,
     original_ppa_price,
+    escalator=0.0,
     discharge_cost=0.0,
     tolls=1,
     study_type="Base study",
@@ -88,6 +89,8 @@ def build_scenario(
         raise ValueError(f"Surplus Strategy desconocida: {surplus_strategy}")
     if study_type not in dimBESS.SUPPORTED_STUDY_TYPES:
         raise ValueError(f"Study Type desconocido: {study_type}")
+    if not -0.5 <= escalator <= 0.5:
+        raise ValueError(f"Price Escalator={escalator} fuera de rango [-0,5; 0,5]; usa una fracción (0,02 = 2 %)")
 
     nominal_capacity = CONTAINER_NOMINAL_CAPACITY[container_type]
     dod = CONTAINER_DOD[container_type]
@@ -118,6 +121,7 @@ def build_scenario(
         "Surplus Strategy"                  :   surplus_strategy,
         "PPA Price"                         :   float(ppa_price),
         "PPA Improvement"                   :   ppa_imp,
+        "Price Escalator"                   :   float(escalator),
         "Discharge Cost"                    :   float(discharge_cost),
         "Cycles/Day"                        :   float(cycles_day),
         "tolls"                             :   tolls,

@@ -67,7 +67,7 @@ def with_total(table, total):
 
 WINDOW_NOTE = (
     "BESS charging hours = hours inside the charging window used by the dispatch: from 00:00 up to 15:00 "
-    "(Solve (PBI logic)) or 16:00 (other strategies), extended to the last hour with PV surplus of that day. "
+    "(Solve (PBI logic) variants) or 16:00 (other strategies), extended to the last hour with PV surplus of that day. "
     "The window therefore moves slightly from day to day."
 )
 
@@ -641,7 +641,7 @@ with tab_marginal:
             "(days where it does not bind count as 0)."
         )
 
-    elif strategy == "Solve (PBI logic)":
+    elif strategy in dimBESS.PBI_LOGIC_STRATEGIES:
         # Rule-based simulation: there is no constraint to take a dual from, but one run takes <1 s, so the sensitivity is computed
         # automatically (+1 MW) instead of asking for a button.
         st.caption(
@@ -667,7 +667,7 @@ with tab_marginal:
 
     # ---- Optional validation by re-solving with added power ----
     with st.expander("Validate by re-solving with added power"):
-        if strategy == "Solve (PBI logic)":
+        if strategy in dimBESS.PBI_LOGIC_STRATEGIES:
             st.caption("The simulation is fast: the table above already uses +1 MW. Use this to try another step.")
         else:
             st.caption(

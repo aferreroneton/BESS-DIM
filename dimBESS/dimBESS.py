@@ -132,7 +132,10 @@ def _empirical_savings_shape_ratio(year):
 DEFAULT_HORIZON_YEARS = 15
 
 # Estrategias de carga soportadas actualmente por el motor de cálculo.
-SUPPORTED_SURPLUS_STRATEGIES = {"PV surplus first", "Best price PV vs Grid", "Solve (PBI logic)"}
+# Las dos variantes "Solve (PBI logic ...)" replican el despacho real de PBI (simulación por reglas, no optimización):
+# la normal, su rama de Best price, y "- PV first", su rama PV surplus first (PV antes que Red sin mirar precio).
+PBI_LOGIC_STRATEGIES = {"Solve (PBI logic)", "Solve (PBI logic - PV first)"}
+SUPPORTED_SURPLUS_STRATEGIES = {"PV surplus first", "Best price PV vs Grid"} | PBI_LOGIC_STRATEGIES
 
 # "Base study": proyección de savings vía el modelo de regresión externo (58 simulaciones
 # históricas de otra herramienta), dimensionando solo en el año 1 (project_savings).
@@ -294,14 +297,23 @@ def _pv_degradation_factor(year):
 
     return PV_DEGRADATION_CURVE[last_year] - _PV_DEGRADATION_SLOPE*(year-last_year)
 
+def ppa_price_in_year(scenario, year):
+    """Precio de carga PPA del año de operación `year`: el año 1 es el precio base y cada año se compone el escalador."""
 
-def project_ppa_savings(ppa_imp, mwh_pv_sc_y1, years=None):
+    return scenario["PPA Price"]*(1 + scenario["Price Escalator"])**(year - 1)
+
+
+def project_ppa_savings(ppa_imp, mwh_pv_sc_y1, years=None, escalator=0.0):
+    """
+    Con el mismo escalador en el precio original y en el de carga, la mejora escala igual:
+    (P_carga - P_orig)*(1+g)^(y-1) = ppa_imp*(1+g)^(y-1).
+    """
 
     if years is None:
         years = range(1, DEFAULT_HORIZON_YEARS+1)
 
     years_list = list(years)
-    savings = [ppa_imp*mwh_pv_sc_y1*_pv_degradation_factor(year) for year in years_list]
+    savings = [ppa_imp*(1 + escalator)**(year-1)*mwh_pv_sc_y1*_pv_degradation_factor(year) for year in years_list]
 
     return pd.Series(savings, index=years_list, name="SAVINGS_PPA")
 
@@ -506,6 +518,20 @@ def load_scenarios(file, sheet_name="Scenarios"):
 
         ppa_imp = float(row["PV PPA Price for charging €/MWh"]) - float(row["Original PPA price €/MWh"])
 
+        # "Price Escalator": subida anual (fracción, 0,02 = 2 %) aplicada al precio PPA de carga y al original; por defecto
+        # 0 -> el precio es el mismo todos los años. Si la columna no existe o está vacía, 0. Un nombre antiguo
+        # ("Price Scalator") se rechaza en vez de ignorarlo en silencio, porque equivaldría a un 0 % sin avisar.
+        if "Price Scalator" in row.index and "Price Escalator" not in row.index:
+            raise ValueError(
+                f"Scenario '{row['Scenario']}': la columna 'Price Scalator' se llama ahora 'Price Escalator'; renómbrala en la hoja Scenarios."
+            )
+        esc_raw = row.get("Price Escalator")
+        escalator = float(esc_raw) if "Price Escalator" in row.index and pd.notna(esc_raw) else 0.0
+        if not -0.5 <= escalator <= 0.5:
+            raise ValueError(
+                f"Scenario '{row['Scenario']}': Price Escalator={escalator} fuera de rango [-0,5; 0,5]; usa una fracción (0,02 = 2 %)."
+            )
+
         # "Tolls" en el Excel es un Sí/No: Sí -> 1, No -> 0. Si la columna no existe
         # (Excel de escenarios aún no actualizado) o está vacía, por defecto 1 (con tolls,
         # el comportamiento de siempre).
@@ -535,6 +561,7 @@ def load_scenarios(file, sheet_name="Scenarios"):
             "Surplus Strategy"  :   strategy,
             "PPA Price"         :   float(row["PV PPA Price for charging €/MWh"]),
             "PPA Improvement"   :   ppa_imp,
+            "Price Escalator"   :   escalator,
             "Discharge Cost"    :   float(row["Discharge Cost"]) if "Discharge Cost" in row and pd.notna(row.get("Discharge Cost")) else 0.0,
             "Cycles/Day"        :   float(row["Cycles/day"]),
             "tolls"             :   tolls,
@@ -619,8 +646,10 @@ def solve_scenario(data_base, scenario):
         model, results = pv_first_daily.opt_pv_first_daily(data, inputs)
     elif scenario["Surplus Strategy"] == "Best price PV vs Grid":
         model, results = best_price_daily.opt_best_price_daily(data, inputs)
-    elif scenario["Surplus Strategy"] == "Solve (PBI logic)":
-        model, results = pbi_logic_daily.opt_pbi_logic_daily(data, inputs)
+    elif scenario["Surplus Strategy"] in PBI_LOGIC_STRATEGIES:
+        model, results = pbi_logic_daily.opt_pbi_logic_daily(
+            data, inputs, pv_first=scenario["Surplus Strategy"] == "Solve (PBI logic - PV first)"
+        )
     else:
         raise NotImplementedError(
             f"Scenario '{scenario["Scenario"]}': Surplus Strategy='{scenario["Surplus Strategy"]}' can't be run"
@@ -663,13 +692,14 @@ def kpi_row_from_results(data_base, scenario, results, inputs, horizon_years, sa
     n_containers = scenario["N Containers"]
     bess_capacity = nominal_capacity*n_containers
     ppa_imp = scenario["PPA Improvement"]
+    escalator = scenario["Price Escalator"]
     study_type = scenario.get("Study Type", "Base study")
 
     calc_data = aux_functions.calculate_table(results, inputs["PPA Price"], inputs)
     savings_y1 = calc_data["€ Savings from BESS"]
 
     mwh_pv_direct_sc = calc_data["MWh PV Direct SC"]
-    proyeccion_ppa = project_ppa_savings(ppa_imp, mwh_pv_sc_y1=mwh_pv_direct_sc, years=range(1, horizon_years+1))
+    proyeccion_ppa = project_ppa_savings(ppa_imp, mwh_pv_sc_y1=mwh_pv_direct_sc, years=range(1, horizon_years+1), escalator=escalator)
     savings_ppa_annual = abs(proyeccion_ppa.iloc[0])
     savings_ppa_n_years = abs(proyeccion_ppa.sum())
 
@@ -693,7 +723,8 @@ def kpi_row_from_results(data_base, scenario, results, inputs, horizon_years, sa
         data_by_year = project_year_data(data_base, extension_data, y1, years=calib_years)
         for y in calib_years:
             try:
-                savings_by_calib_year[y] = _solve_scenario_year_savings(data_by_year[y], scenario)
+                scenario_y = {**scenario, "PPA Price" : ppa_price_in_year(scenario, y)}
+                savings_by_calib_year[y] = _solve_scenario_year_savings(data_by_year[y], scenario_y)
             except RuntimeError as e:
                 # Un año concreto puede salir infactible (p.ej. la demanda proyectada supera
                 # la potencia contratada en una hora de la ventana de carga, donde no se
@@ -842,7 +873,7 @@ def contracted_power_marginal_value(data_base, scenario, step_mw=1.0, n_workers=
     valor marginal en € por MW añadido y año (para "Todos", por MW de subida uniforme).
 
     El coste computacional es el de (n_periodos + 2) resoluciones del año 1: segundos con
-    "Solve (PBI logic)", minutos con las estrategias LP.
+    "Solve (PBI logic ...)", minutos con las estrategias LP.
     """
 
     periods = sorted(data_base["Period"].dropna().unique())

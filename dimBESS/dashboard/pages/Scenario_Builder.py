@@ -51,9 +51,13 @@ with col_form:
     surplus_strategy = r3c1.selectbox("Surplus Strategy", sb.SURPLUS_STRATEGIES)
     price_mode = r3c2.selectbox("Price mode from PV surplus", sb.PRICE_MODES)
 
-    r4c1, r4c2 = st.columns(2)
+    r4c1, r4c2, r4c3 = st.columns(3)
     ppa_price = r4c1.number_input("PV PPA Price for charging €/MWh", min_value=0.0, value=35.2, step=0.1)
     original_ppa_price = r4c2.number_input("Original PPA price €/MWh", min_value=0.0, value=35.2, step=0.1)
+    escalator = r4c3.number_input(
+        "Price Escalator (annual)", min_value=-0.5, max_value=0.5, value=0.0, step=0.005, format="%.3f",
+        help="Annual increase of the PPA prices as a fraction (0.02 = 2 %). Year 1 keeps the base price; 0 means the same price every year."
+    )
 
     discharge_cost = st.number_input("Discharge Cost (opcional)", min_value=0.0, value=0.0, step=0.1)
 
@@ -82,6 +86,7 @@ with col_preview:
             price_mode=price_mode,
             ppa_price=ppa_price,
             original_ppa_price=original_ppa_price,
+            escalator=escalator,
             discharge_cost=discharge_cost,
             study_type=study_type,
         )
