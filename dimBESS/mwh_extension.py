@@ -21,7 +21,10 @@ def demand_extension(base, index_df, y1):
 
     demand_joker = base.groupby(["Month num", "Weekday", "HourOfDay"])["Power demand kWh"].mean()
     demand_joker_lookup = demand_joker.to_dict()
-    demand_lookup = base.set_index(["Date", "HourOfDay"])["Power demand kWh"].to_dict()
+    # La clave de fecha debe ser datetime.date, igual que "Ref Date" más abajo: base["Date"] llega como Timestamp (datetime64) y,
+    # con esa clave, la búsqueda del día de referencia no encontraba nunca nada y toda la demanda salía del joker. KNIME usa el
+    # día de referencia y solo cae al joker cuando no existe (Joiner #79 / Expression #80-81).
+    demand_lookup = dict(zip(zip(pd.to_datetime(base["Date"]).dt.date, base["HourOfDay"]), base["Power demand kWh"]))
     weekday_lookup = ((base.set_index(["Month num", "Day"]))["Weekday"].to_dict())
 
 
