@@ -1,3 +1,4 @@
+import hashlib
 import io
 from pathlib import Path
 
@@ -31,12 +32,18 @@ if uploaded_file is not None:
     st.session_state["uploaded_bytes"] = uploaded_file.getvalue()
     st.session_state["uploaded_name"] = uploaded_file.name
 
+# source_label es solo para mostrar; source_id identifica el CONTENIDO del Excel. Antes la caché de datos y resultados se
+# invalidaba comparando solo el nombre del archivo, así que subir un Excel modificado con el mismo nombre (p. ej. tras cambiar
+# la potencia contratada) seguía usando los datos y resultados antiguos sin resolver nada nuevo.
 if "uploaded_bytes" in st.session_state:
     source_file = io.BytesIO(st.session_state["uploaded_bytes"])
     source_label = st.session_state["uploaded_name"]
+    source_id = f"{source_label}:{hashlib.md5(st.session_state['uploaded_bytes']).hexdigest()}"
 else:
     source_file = DEFAULT_FILE
     source_label = DEFAULT_FILE.name
+    _stat = DEFAULT_FILE.stat()
+    source_id = f"{source_label}:{_stat.st_mtime_ns}:{_stat.st_size}"
 
 try:
     scenarios = dimBESS.load_scenarios(source_file)
@@ -60,13 +67,13 @@ if "savings_projections" not in st.session_state:
     st.session_state["savings_projections"] = {}
 if (
     "scenario_source" not in st.session_state
-    or st.session_state["scenario_source"] != source_label
+    or st.session_state["scenario_source"] != source_id
     or "data_base" not in st.session_state
 ):
     st.session_state["scenario_results"] = {}
     st.session_state["kpi_rows"] = {}
     st.session_state["savings_projections"] = {}
-    st.session_state["scenario_source"] = source_label
+    st.session_state["scenario_source"] = source_id
     st.session_state["source_file"] = source_file
     st.session_state["data_base"] = dimBESS.load_hourly_data(source_file)
     st.session_state["cups_info"] = dimBESS.read_cups_info(source_file)
